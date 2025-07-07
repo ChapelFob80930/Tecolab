@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     secret_key: str
     algorithm: str
     access_token_expire_minutes: int
+    pinecone_api_key: str
+    pinecone_dense_index_host: str
+    index_name: str
+    namespace_name: str
 
     class Config:
         env_file = ".env"

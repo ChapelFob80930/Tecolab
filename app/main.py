@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from .routers import auth, users
+from .routers import auth, users, projects, search
 from .config import settings
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine
@@ -20,6 +20,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(projects.router)
+app.include_router(search.router)
 
 @app.get("/")
 def root():
