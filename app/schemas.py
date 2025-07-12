@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
-from typing import Optional, Annotated, List
+from typing import Optional, Annotated, List, Literal, Dict
 from uuid import UUID
 
 class UserBase(BaseModel):
@@ -88,3 +88,21 @@ class SearchResult(BaseModel):
     featured: bool
     recommended: bool
     domain: str
+    
+
+class CoursePrompt(BaseModel):
+    topic: str  # e.g. "LangChain"
+    level: Literal["beginner", "intermediate", "advanced"] = "beginner"
+    use_scraping: bool = False  # If True, try to pull web data
+    include_code: bool = True  # If True, include code examples
+    audience: Optional[str] = None #can be null or any audience the admin finds suitable
+    duration: Optional[str] = None #can be null and the ai generates it on its own or any duration the admin finds suitable
+    # custom_urls: List[str]
+    # author_id: str
+
+class CourseOutline(BaseModel):
+    title: str
+    description: str
+    modules: List[Dict[str, str]]  # List of {title, summary}
+    prerequisites: List[str]
+    will_learn: List[str]  # Key skills/outcomes, e.g. ["Build agents with LangChain", "Use vector databases"]
