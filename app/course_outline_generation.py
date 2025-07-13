@@ -102,6 +102,7 @@ def generate_course_outline(prompt: CoursePrompt) -> CourseOutline:
     chain = prompt_template | llm | parser
     return chain.invoke(input_values)
 
+# will be removed later its just for checking if llm generates correct output
 if __name__ == "__main__":
     test_prompt = CoursePrompt(
     topic="LangChain",
