@@ -13,8 +13,6 @@ llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0)
 parser = PydanticOutputParser(pydantic_object=CourseOutline)
 
 
-from langchain_core.prompts import ChatPromptTemplate
-
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", 
      "You are an expert technical course designer. Generate high-quality, structured, and project-based tech course outlines. "
