@@ -28,7 +28,7 @@ class UserOut(BaseModel):
     wants_to_learn: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
     
 class Token(BaseModel):
     access_token: str
@@ -73,7 +73,7 @@ class Project(ProjectBase):
     created_at: datetime
 
     class Config:
-        orm_mode = True    
+        from_attributes = True    
 
 class Query(BaseModel):
     query: str
@@ -97,12 +97,25 @@ class CoursePrompt(BaseModel):
     include_code: bool = True  # If True, include code examples
     audience: Optional[str] = None #can be null or any audience the admin finds suitable
     duration: Optional[str] = None #can be null and the ai generates it on its own or any duration the admin finds suitable
-    # custom_urls: List[str]
+    custom_urls: List[str]
     # author_id: str
+
+class Module(BaseModel):
+    title: str
+    summary: str
+    code_examples: str = ""
+    resources: Optional[Dict[str, str]] = Field(default_factory=list)       # External links or references
+    video_links: Optional[List[str]] = Field(default_factory=list)
+    scraping_resources: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 class CourseOutline(BaseModel):
     title: str
     description: str
-    modules: List[Dict[str, str]]  # List of {title, summary}
+    modules: List[Module]  # List of {title, summary}
     prerequisites: List[str]
     will_learn: List[str]  # Key skills/outcomes, e.g. ["Build agents with LangChain", "Use vector databases"]
+    estimated_time: str
+    # rating: Optional[float]
+    # thumbnail_url: str
+    module_difficulty: Dict[str,str]
+    
