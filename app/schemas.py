@@ -97,7 +97,7 @@ class CoursePrompt(BaseModel):
     include_code: bool = True  # If True, include code examples
     audience: Optional[str] = None #can be null or any audience the admin finds suitable
     duration: Optional[str] = None #can be null and the ai generates it on its own or any duration the admin finds suitable
-    custom_urls: List[str]
+    custom_urls: Optional[List[str]] = Field(default_factory=list)
     # author_id: str
 
 class Module(BaseModel):
