@@ -3,6 +3,12 @@ from datetime import datetime
 from typing import Optional, Annotated, List, Literal, Dict
 from uuid import UUID
 
+from enum import Enum
+
+class RoleEnum(str, Enum):
+    admin = "admin"
+    user = "user"
+
 class UserBase(BaseModel):
     email: EmailStr = Field(..., description="The user's email address")
     first_name: str = Field(...,min_length=1, description="The user's first name")
@@ -22,6 +28,7 @@ class UserOut(BaseModel):
     created_at: datetime
     first_name: str
     last_name: str
+    role: RoleEnum
     skills: Optional[str] = None
     goal: Optional[str] = None
     experience: Optional[str] = None

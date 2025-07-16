@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine
 from . import models
 
-models.Base.metadata.create_all(bind=engine) 
+# models.Base.metadata.create_all(bind=engine) ##not required anymore as we have alembic now
 # makes sure that the database tables are created based on the models defined in the app will comment out later when I implement alembic for migrations
 
 app = FastAPI()

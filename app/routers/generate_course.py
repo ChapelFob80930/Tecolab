@@ -9,6 +9,6 @@ from ..config import settings
 
 router = APIRouter(prefix = "/generate", tags = ['manage-show-projects-vectorDB'])
 
-@router.get("/")
-def get_all_projects(): #not implemented yet
+@router.post("/")
+def generate_course(): #not implemented yet
     pass

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     pinecone_dense_index_host: str
     index_name: str
     namespace_name: str
+    openai_api_key:str
+    trusted_admin_emails:str
 
     class Config:
         env_file = ".env"

@@ -3,6 +3,12 @@ from sqlalchemy.orm import relationship
 from .database import Base
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.sql.expression import text
+from sqlalchemy import Enum as SqlEnum
+import enum
+
+class RoleEnum(str, enum.Enum):
+    admin = "admin"
+    user = "user"
 
 class User(Base):
     __tablename__ = "users"
@@ -13,10 +19,10 @@ class User(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
-    is_active = Column(Boolean, server_default='FALSE', nullable=False)
+    is_active = Column(Boolean, nullable=False, server_default=text('true'))
     skills = Column(String, nullable=True)
     goal = Column(String, nullable=True)
     experience = Column(String, nullable=True)
     wants_to_learn = Column(String, nullable=True)
-    
+    role = Column(SqlEnum(RoleEnum), nullable=False, server_default="user")
     

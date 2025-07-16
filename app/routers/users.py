@@ -1,7 +1,9 @@
+import os
 from .. import schemas,models, utils
 from fastapi import FastAPI, Response, status, HTTPException, Depends, APIRouter
 from sqlalchemy.orm import Session
 from ..database import get_db
+from ..models import RoleEnum
 
 router = APIRouter( prefix = "/users", tags = ['Users']) #prefix for all routes in this router will be /users
 
@@ -12,7 +14,19 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     hashed_password = utils.hash(user.password)
     user.password = hashed_password
     
-    new_user = models.User(**user.model_dump())#unpacking the post dictionary to match the Post model
+    new_user = models.User(**user.model_dump(exclude={"role"}))#unpacking the post dictionary to match the Post model
+    
+    new_user.role = RoleEnum.user
+    if user.email.endswith("@tecolab.in"):
+        new_user.role = RoleEnum.admin
+    
+    #if it is not possible to make email ending with @tecolab.dev then we uncomment below code and add required env variables
+        
+    TRUSTED_ADMINS = os.getenv("TRUSTED_ADMIN_EMAILS", "").split(",")
+
+    if user.email in TRUSTED_ADMINS:
+        new_user.role = RoleEnum.admin
+    
     try:
         db.add(new_user)
         db.commit()
