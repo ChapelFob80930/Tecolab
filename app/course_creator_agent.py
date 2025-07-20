@@ -4,22 +4,20 @@ from dotenv import load_dotenv
 import os
 import json
 from uuid import uuid4
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from . import database, schemas, models, utils, oauth2
-from .config import settings
+# from .config import settings  ##NOTE: Will uncomment this once API is setup, now using load_dotenv to load environment variables as using this import causes ImportError: attempted relative import with no known parent package but works when called from the main file
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import (
     BaseMessage,
     ToolMessage,
     SystemMessage,
     HumanMessage,
-    get_buffer_string
+    get_buffer_string,
+    AIMessage
 )
 from langchain_core.tools import tool
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableConfig
+from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.runnables import RunnableConfig, RunnableLambda
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -29,7 +27,8 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_tavily import TavilySearch
-from .course_outline_generation import generate_course_outline
+# from .course_outline_generation import generate_course_outline ##Note: Same as above, will uncomment once API is setup
+from course_outline_generation import generate_course_outline
 from schemas import CourseOutline, CoursePrompt
 import tiktoken
 from langchain_core.runnables import RunnableConfig
@@ -39,16 +38,55 @@ load_dotenv()
 
 recall_vector_store = InMemoryVectorStore(OpenAIEmbeddings())
 
+llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0)
 
-def get_user_id(config: RunnableConfig) -> str:
-    return config.get("configurable", {}).get("user_id", "anonymous")
+## HELPER FUNCTIONS
 
-class AgentState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    course_outline: str
-    course: str
+def intent_checker(message: BaseMessage):
+    intent_check_prompt = PromptTemplate.from_template(
+        """
+            You are a routing assistant for an AI course creation agent.
 
-@tool
+            Decide what the user wants to do based on their message.
+
+            User message: "{user_input}"
+
+            If they want to modify the existing course outline (e.g., add, remove, change something), respond with:
+            edit_outline
+
+            If they want to generate a new course or continue generation, respond with:
+            generate_course
+        """
+    )
+
+    intent_chain = (intent_check_prompt | llm | StrOutputParser())
+    
+    return intent_chain.invoke({"user_input": message.content})
+
+def check_module_feedback_intent(message: str) -> str:
+    """
+    Use LLM to determine if user approves the module or wants to edit it.
+
+    Returns:
+    - "approve"
+    - "edit"
+    - "unclear"
+    """
+    prompt = PromptTemplate.from_template("""
+    You are a helpful assistant helping a course generation agent. Based on the user's message, determine their intent.
+
+    Message: "{message}"
+
+    Respond ONLY with one of the following:
+    - approve
+    - edit
+    - unclear
+    """)
+    
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({"message": message}).strip().lower()
+
+
 def generate_course_outline(prompt: CoursePrompt):
     """Generates a course outline as per the users specifications"""
     
@@ -144,15 +182,66 @@ def generate_course_outline(prompt: CoursePrompt):
     
     return chain.invoke(input_values)
 
-@tool
-def web_scraping(content: str):
-    pass
+def generate_module_content(module: dict, full_outline: dict) -> str:
+    """
+    Expand a single module into a fully detailed lesson using full outline context.
+    """
 
-@tool
-def get_yt_links(content: str):
-    pass
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are a professional technical course creator. Your job is to expand individual modules "
+         "from a course outline into rich, structured educational content. You're allowed to creatively "
+         "add relevant subtopics and tasks if they benefit the learner."),
+        ("user", 
+         "Here is the full course outline for context:\n\n{outline}\n\n"
+         "Now generate the full lesson content for the following module:\n\n{module}\n\n"
+         "Please include:\n"
+         "- Detailed explanation of each subtopic\n"
+         "- Code examples (from outline or inferred)\n"
+         - "Real-world applications\n"
+         "- Links to resources\n"
+         "- Hands-on exercises or practice tasks\n")
+    ])
 
-@tool
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({
+        "outline": json.dumps(full_outline, indent=2),
+        "module": json.dumps(module, indent=2)
+    })
+
+
+def parse_user_input_for_course_outline(user_input: str)->CoursePrompt: #named this way as might have to make another to parse input for course generation if we make specified schema for that
+    """parse the user input into the desired format to generate course outline"""
+    llm_structured_output = llm.with_structured_output(CoursePrompt)
+    return llm_structured_output.invoke(user_input)
+
+def get_user_id(config: RunnableConfig) -> str:
+    return config.get("configurable", {}).get("user_id", "anonymous")
+
+
+## ACTUAL AGENT CODE
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    course_outline: str
+    course: str
+    current_outline: Optional[str]  # for tools
+    user_edit_request: Optional[str]  # for tools
+    module_index: int                      # New: which module is currently being generated
+    generated_modules: List[str]          # New: list of fully generated module texts
+    awaiting_approval: bool               # New: whether we're waiting for user input
+
+
+
+
+# @tool
+# def web_scraping(content: str):
+#     pass
+
+# @tool
+# def get_yt_links(content: str):
+#     pass
+
 def save_recall_memory(memory: str, config: RunnableConfig) -> str:
     """Save memory to vectorstore for later semantic retrieval."""
     user_id = get_user_id(config)
@@ -163,7 +252,7 @@ def save_recall_memory(memory: str, config: RunnableConfig) -> str:
     return memory
 
 
-@tool
+
 def search_recall_memories(query: str, config: RunnableConfig) -> List[str]:
     """Search for relevant memories."""
     user_id = get_user_id(config)
@@ -176,53 +265,223 @@ def search_recall_memories(query: str, config: RunnableConfig) -> List[str]:
     )
     return [document.page_content for document in documents]
 
-@tool
-def parse_user_input_for_course_outline(user_input: str)->CoursePrompt: #named this way as might have to make another to parse input for course generation if we make specified schema for that
-    """parse the user input into the desired format to generate course outline"""
-    llm_structured_output = llm.with_structured_output(CoursePrompt)
-    return llm_structured_output.invoke(user_input)
 
-tools = [generate_course_outline, save_recall_memory, search_recall_memories, parse_user_input_for_course_outline]
+# tools = [edit_course_outline, save_recall_memory, search_recall_memories]
 
-llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0)
-
-llm_with_tools = ChatOpenAI(model = "gpt-4.1-nano", temperature=0).bind_tools(tools)
+# llm_with_tools = ChatOpenAI(model = "gpt-4.1-nano", temperature=0).bind_tools(tools)
 
 def course_outline_generation_node(state: AgentState)->AgentState:
-    if not state['messages']:
-        user_input = "I'm ready to help you create your own courses. What would you like to create?"
-        user_message = HumanMessage(content=user_input)
+    """Generate the course outline based on user input."""
+    
+    user_message = next((msg for msg in reversed(state["messages"]) if isinstance(msg, HumanMessage)), None)
+    if not user_message:
+        raise ValueError("No user message found.")
+
+    parsed_prompt: CoursePrompt = parse_user_input_for_course_outline(user_message.content)
+    outline = generate_course_outline(parsed_prompt)
+    
+    # save_recall_memory(json.dumps(outline, indent=2), config=RunnableConfig(configurable={"user_id": user_id}))
+    
+    return{
+        "messages": list(state["messages"])+ [HumanMessage(content = user_message.content), AIMessage(content = json.dumps(outline, indent=2))],
+        "course_outline": json.dumps(outline, indent=2),
+        "course": state["course"]
+    }
     
     
-    pass
+def edit_course_outline_node(current_outline: str, user_edit_request: str) -> str:
+    """Modify the course outline JSON based on user's edit request. Takes in the original outline and user's edit request as input. Always return valid updated JSON output."""
+    
+    parser = PydanticOutputParser(pydantic_object=CourseOutline)
 
-def to_edit_outline_node(state: AgentState)->AgentState:
-    pass
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a professional course editor. You will be given a course outline in JSON and an edit request. "
+         "Update the outline based on the request. Do not remove unrelated sections. "
+         f"{parser.get_format_instructions()}\n\n"
+         "Return only clean valid JSON matching the CourseOutline schema as stated above."),
+        ("human", "Original outline:\n{current_outline}\n\nEdit request:\n{edit_request}")
+    ])
 
-def to_generate_course_node(state: AgentState)->AgentState:
-    pass
+    chain = prompt | llm | parser
+    output = chain.invoke({
+        "current_outline": current_outline,
+        "edit_request": user_edit_request
+    })
 
-def to_edit_course_node(state: AgentState)->AgentState:
-    pass
+    return output.json(indent=2)
+
+def to_edit_outline_node(state: AgentState)->str:
+    """Determine if user wants to edit the outline or continue to the next step to generate a course."""
+    last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+    if not last_human:
+        return "course_generation"
+    
+    intent = intent_checker(last_human)
+    return "edit_course_outline" if intent.strip() == "edit_outline" else "course_generation"
+
+def to_generate_course_node(state: AgentState) -> AgentState:
+    outline = json.loads(state["course_outline"])
+    index = state.get("module_index", 0)
+    modules = outline.get("modules", [])
+
+    if index >= len(modules):
+        final_course = "\n\n".join(state.get("generated_modules", []))
+        return {
+            **state,
+            "course": final_course,
+            "messages": list(state["messages"]) + [AIMessage(content="🎉 All modules generated!")],
+            "awaiting_approval": False
+        }
+
+    current_module = modules[index]
+    module_text = generate_module_content(current_module, outline)
+
+    return {
+        **state,
+        "generated_modules": state.get("generated_modules", []) + [module_text],
+        "messages": list(state["messages"]) + [AIMessage(content=module_text)],
+        "awaiting_approval": True,
+        "module_index": index  # stay on this module until approved
+    }
+
+    
+def check_user_feedback_node(state: AgentState) -> str:
+    """Check user feedback on the last generated module."""
+    if not state["awaiting_approval"]:
+        return "generate_module"
+
+    last_msg = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+    if not last_msg:
+        return "generate_module"
+
+    intent = check_module_feedback_intent(last_msg.content)
+
+    if intent == "approve":
+        return "generate_module"
+    elif intent == "edit":
+        return "edit_module"
+    else:
+        return "check_user_feedback"
+
+
+def edit_current_module_node(state: AgentState) -> AgentState:
+    """Edit the last generated module based on user feedback."""
+    outline = json.loads(state["course_outline"])
+    index = state["module_index"]
+    modules = outline.get("modules", [])
+
+    current_module = modules[index]
+    edit_request = state["user_edit_request"] or "Apply the user's suggestion."
+
+    # You can add a custom prompt here too
+    edited_text = llm.invoke(f"Here's the original module: {json.dumps(current_module)}.\nUser requested: {edit_request}.\nRegenerate the module accordingly.")
+
+    # Replace last generated module with new one
+    updated_modules = state["generated_modules"][:-1] + [edited_text]
+
+    return {
+        **state,
+        "generated_modules": updated_modules,
+        "messages": list(state["messages"]) + [AIMessage(content=edited_text)],
+        "awaiting_approval": True
+    }
+    
+def advance_module_node(state: AgentState) -> AgentState:
+    return {
+        **state,
+        "module_index": state["module_index"] + 1,
+        "awaiting_approval": False
+    }
+
+
 
 graph = StateGraph(AgentState)
+
+# --- Step 1: Add Nodes ---
 graph.add_node("course_outline_generation", course_outline_generation_node)
+graph.add_node("edit_course_outline", edit_course_outline_node)
+graph.add_node("to_edit_outline", to_edit_outline_node)
+
 graph.add_node("course_generation", to_generate_course_node)
-graph.add_node("tools", ToolNode(tools))
-# graph.add_node("course_generation", generate_course_outline)
-# graph.add_node("course_generation", generate_course_outline)
+graph.add_node("check_user_feedback", check_user_feedback_node)
+graph.add_node("edit_module", edit_current_module_node)
+graph.add_node("advance_module", advance_module_node)
+
+# Set Entry Point ---
+graph.set_entry_point("course_outline_generation")
+
+# After outline generation, check user intent ---
 graph.add_conditional_edges(
     "course_outline_generation",
     to_edit_outline_node,
     {
-        
+        "edit_course_outline": "edit_course_outline",
+        "course_generation": "course_generation"
     }
 )
+
+# After editing outline, regenerate course ---
+graph.add_edge("edit_course_outline", "course_generation")
+
+# After generating a module, check user feedback ---
 graph.add_conditional_edges(
     "course_generation",
-    to_edit_course_node,
+    check_user_feedback_node,
     {
-        
+        "generate_module": "advance_module",      # If user approves
+        "edit_module": "edit_module",             # If user wants changes
+        "check_user_feedback": "check_user_feedback",  # If unclear
     }
 )
+
+#  After editing a module, re-check user feedback ---
+graph.add_edge("edit_module", "check_user_feedback")
+
+#  If unclear feedback, ask again (loop) ---
+graph.add_edge("check_user_feedback", "course_generation")
+
+#  After user approves a module, move to next or finish ---
+graph.add_conditional_edges(
+    "advance_module",
+    lambda state: (
+        "course_generation"
+        if state["module_index"] < len(json.loads(state["course_outline"])["modules"])
+        else END
+    ),
+    {
+        "course_generation": "course_generation",
+        END: END,
+    }
+)
+
+
 agent = graph.compile()
+
+
+## Temporary fix to run the agent with a dummy input until the actual API is set up
+if __name__ == "__main__":
+    user_message = HumanMessage(content="""
+    Create a course on LangChain Agents for intermediate developers.
+
+    Target audience: Developers who are familiar with Python and want to learn AI agents  
+    Estimated duration: 4 weeks  
+    Include code examples: Yes  
+    Custom URLs: ["https://python.langchain.com", "https://docs.smith.langchain.com"]
+    """)
+
+    initial_state = {
+        "messages": [user_message],
+        "course_outline": "",
+        "course": "",
+        "current_outline": None,
+        "user_edit_request": None,
+        "module_index": 0,
+        "generated_modules": [],
+        "awaiting_approval": False
+    }
+
+    state = agent.invoke(initial_state)
+
+    print("\n\n========== GENERATED COURSE ==========\n\n")
+    print(state["course"])
