@@ -90,6 +90,8 @@ def check_module_feedback_intent(message: str) -> str:
 def generate_course_outline(prompt: CoursePrompt):
     """Generates a course outline as per the users specifications"""
     
+    print("Generating course outline\n\n")
+    
     parser = PydanticOutputParser(pydantic_object=CourseOutline)
 
 
@@ -180,12 +182,15 @@ def generate_course_outline(prompt: CoursePrompt):
     
     chain = prompt_template|llm|parser
     
+    
     return chain.invoke(input_values)
 
 def generate_module_content(module: dict, full_outline: dict) -> str:
     """
     Expand a single module into a fully detailed lesson using full outline context.
     """
+
+    print("Generating module content")
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -198,15 +203,18 @@ def generate_module_content(module: dict, full_outline: dict) -> str:
          "Please include:\n"
          "- Detailed explanation of each subtopic\n"
          "- Code examples (from outline or inferred)\n"
-         - "Real-world applications\n"
+         "- Real-world applications\n"
          "- Links to resources\n"
          "- Hands-on exercises or practice tasks\n")
     ])
+    
+    # print(type(full_outline))
+    # print(type(module))
 
     chain = prompt | llm | StrOutputParser()
     return chain.invoke({
-        "outline": json.dumps(full_outline, indent=2),
-        "module": json.dumps(module, indent=2)
+        "outline": full_outline,
+        "module": module
     })
 
 
@@ -279,17 +287,20 @@ def course_outline_generation_node(state: AgentState)->AgentState:
 
     parsed_prompt: CoursePrompt = parse_user_input_for_course_outline(user_message.content)
     outline = generate_course_outline(parsed_prompt)
-    
+    # print(type(outline))
+    # print(type(outline.model_dump_json(indent=2)))
+    print(outline.model_dump_json(indent=2))
     # save_recall_memory(json.dumps(outline, indent=2), config=RunnableConfig(configurable={"user_id": user_id}))
+    print("\nGenerated course outline\n\n")
     
     return{
-        "messages": list(state["messages"])+ [HumanMessage(content = user_message.content), AIMessage(content = json.dumps(outline, indent=2))],
-        "course_outline": json.dumps(outline, indent=2),
+        "messages": list(state["messages"])+ [HumanMessage(content = user_message.content), AIMessage(content = outline.model_dump_json(indent=2))],
+        "course_outline": outline.model_dump_json(indent=2),
         "course": state["course"]
     }
     
     
-def edit_course_outline_node(current_outline: str, user_edit_request: str) -> str:
+def edit_course_outline_node(current_outline: str, user_edit_request: str, state: AgentState) -> AgentState:
     """Modify the course outline JSON based on user's edit request. Takes in the original outline and user's edit request as input. Always return valid updated JSON output."""
     
     parser = PydanticOutputParser(pydantic_object=CourseOutline)
@@ -304,12 +315,16 @@ def edit_course_outline_node(current_outline: str, user_edit_request: str) -> st
     ])
 
     chain = prompt | llm | parser
-    output = chain.invoke({
+    updated_outline = chain.invoke({
         "current_outline": current_outline,
         "edit_request": user_edit_request
     })
+    
+    print(type(updated_outline))
 
-    return output.json(indent=2)
+    return {
+        "messages": list(state["messages"]) + [HumanMessage(content = user_edit_request + "Current course outline is: " + current_outline), AIMessage(content = updated_outline.model_dump_json(indent=2))]
+        }
 
 def to_edit_outline_node(state: AgentState)->str:
     """Determine if user wants to edit the outline or continue to the next step to generate a course."""
@@ -326,7 +341,9 @@ def to_generate_course_node(state: AgentState) -> AgentState:
     modules = outline.get("modules", [])
 
     if index >= len(modules):
+        print(f"finished generating module content for module {index} of {len(modules)}\n\n")
         final_course = "\n\n".join(state.get("generated_modules", []))
+        # print(final_course)
         return {
             **state,
             "course": final_course,
@@ -334,8 +351,18 @@ def to_generate_course_node(state: AgentState) -> AgentState:
             "awaiting_approval": False
         }
 
+    
     current_module = modules[index]
     module_text = generate_module_content(current_module, outline)
+    
+    print(module_text +"\n\n")
+    
+    print(f"finished generating module content for module {index} of {len(modules)}")
+    
+    
+    # print(state["generated_modules"])
+    
+    print("\n\n")
 
     return {
         **state,
@@ -446,7 +473,7 @@ graph.add_conditional_edges(
     "advance_module",
     lambda state: (
         "course_generation"
-        if state["module_index"] < len(json.loads(state["course_outline"])["modules"])
+        if state["module_index"] <= len(json.loads(state["course_outline"])["modules"])
         else END
     ),
     {
