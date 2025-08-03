@@ -18,7 +18,7 @@ def get_all_projects(): #not implemented yet
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def insert_project(project: schemas.ProjectCreate, pc=Depends(get_vector_db)): #only for admin and for general courses, we won't put personalized courses in vector db, we will maintain another separate db for that. For now will write general code, once projects is done will further implement this
     dense_index = pc.Index(host=settings.pinecone_dense_index_host)
-    project_id = str(uuid4())
+    project_id = "course_" + str(uuid4())
     print(project.pinecone_metadata(id=project_id))
     metadata = [{"id":project_id, "chunk_text":str(project.pinecone_metadata(id=project_id))}]
     # metadata = [{"id":project_id, "chunk_text":json.dumps(project.pinecone_metadata(id=project_id))}]

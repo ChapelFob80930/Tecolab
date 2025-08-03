@@ -1,0 +1,27 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	course_outline_generation(course_outline_generation)
+	edit_course_outline(edit_course_outline)
+	course_generation(course_generation)
+	edit_module(edit_module)
+	advance_module(advance_module)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> course_outline_generation;
+	advance_module -.-> __end__;
+	advance_module -.-> course_generation;
+	course_generation -. &nbsp;generate_module&nbsp; .-> advance_module;
+	course_generation -.-> edit_module;
+	course_outline_generation -.-> course_generation;
+	course_outline_generation -.-> edit_course_outline;
+	edit_course_outline --> course_generation;
+	edit_module -. &nbsp;generate_module&nbsp; .-> advance_module;
+	edit_course_outline -.-> edit_course_outline;
+	edit_module -.-> edit_module;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

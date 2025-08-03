@@ -1,6 +1,4 @@
 __pycache__
 venv/
 .env
-.\app\course_generation.py
-app/course_generation.py
-app/course_outline_generation.py
+

@@ -15,7 +15,13 @@ class Settings(BaseSettings):
     namespace_name: str
     openai_api_key:str
     trusted_admin_emails:str
-
+    supabase_database_username: str
+    supabase_database_password: str
+    supabase_database_hostname: str
+    supabase_database_port: str
+    supabase_database_name: str
+    supabase_api_key: str
+    
     class Config:
         env_file = ".env"
         

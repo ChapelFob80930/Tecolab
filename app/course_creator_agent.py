@@ -33,10 +33,27 @@ from schemas import CourseOutline, CoursePrompt
 import tiktoken
 from langchain_core.runnables import RunnableConfig
 import uuid
+from course_outline_generation import parse_user_input_for_course_outline, generate_course_outline
+from course_generation import generate_module_content
+from pathlib import Path
+# from vector_database import get_vector_db
+from supabase import get_db
+from supabase_models import AgentMemory
+from langchain_openai import OpenAIEmbeddings
+from sqlalchemy import text
+from typing import List
+from sentence_transformers import SentenceTransformer
+from sqlalchemy.orm import Session
+
+
 
 load_dotenv()
 
-recall_vector_store = InMemoryVectorStore(OpenAIEmbeddings())
+embeddings = OpenAIEmbeddings()
+
+# recall_vector_store = InMemoryVectorStore(OpenAIEmbeddings())
+
+vector_store: Session = next(get_db())
 
 llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0)
 
@@ -87,149 +104,15 @@ def check_module_feedback_intent(message: str) -> str:
     return chain.invoke({"message": message}).strip().lower()
 
 
-def generate_course_outline(prompt: CoursePrompt):
-    """Generates a course outline as per the users specifications"""
-    
-    print("Generating course outline\n\n")
-    
-    parser = PydanticOutputParser(pydantic_object=CourseOutline)
-
-
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", 
-        "You are an expert technical course designer. Generate high-quality, structured, and project-based tech course outlines. "
-        "Ensure the content is modular, developer-friendly, and production-ready."),
-        
-        ("user", 
-        """Create a course on **"{topic}"** for a **{level}** learner.
-
-    Target audience: {audience}  
-    Estimated duration: {duration}  
-    Include code examples: {include_code}  
-    Custom URLs provided: {custom_urls}  
-
-    ➡️ If `include_code` is true:
-    - Add a `code_examples` field to each module.
-    - Instead of just "Yes", describe what kind of code examples should be included 
-        (e.g., "LangChain chains", "Retrieval QA pipeline", "Tool agent example").
-    - If no code is needed, set it as "No".
-
-    ➡️ If `custom_urls` are provided:
-    - Add a `scraping_resources` field to each module.
-    - It should be a dictionary mapping resource types (like "docs", "blog", "video") to the most relevant URLs **per module**.
-    - You may include:
-        - URLs from `custom_urls` if they apply to that module
-        - Any other public, legally scrapeable resources GPT is aware of (e.g., official docs, blogs, public GitHub files, videos)
-    - Prioritize relevance and usefulness for that module.
-
-    ➡️ For the `resources` field:
-    - Set it as a dictionary like: {{"docs": "...", "blog": "...", "toolkit": "..."}}
-    - Do not return a list.
-    - If no resources are found, return an empty dictionary (`{{}}`).
-
-    ➡️ For video links:
-    - Only include **real, publicly available video links** (YouTube, Vimeo, etc).
-    - ❌ Never include placeholders or obviously fake video URLs like:
-        - "https://www.youtube.com/watch?v=example"
-        - "https://www.youtube.com/watch?v=V7V7V7V7V7V"
-        - "https://youtube.com/watch?v=ZZZZZZZZZZZ"
-        - Or anything that looks auto-generated or doesn’t lead to a real video.
-    - ✅ If no real videos are found, set `video_links` as an empty list (`[]`).
-
-    🛑 Do NOT include inline comments in JSON like `// placeholder` — return clean, valid JSON only.
-
-    ---
-
-    Return ONLY a structured JSON output with the following fields:
-
-    1. `title` — a compelling title for the course  
-    2. `description` — what the course offers  
-    3. `modules` — a list of modules. Each module must include:
-    - `title`  
-    - `summary`  
-    - `code_examples` (short descriptive string)  
-    - `resources` (dictionary of helpful links like: {{"docs": "...", "blog": "..."}})  
-    - `video_links` (list of real YouTube/Vimeo video URLs, or empty list)  
-    - `scraping_resources` (dictionary of scrapeable URLs by type: {{"docs": "...", "video": "...", "blog": "..."}})
-
-    4. `prerequisites` — list of concepts the learner should already know  
-    5. `will_learn` — list of outcomes or skills gained  
-    6. `estimated_time` — how long this course will take  
-    7. `module_difficulty` — dictionary where each key is a module title and the value is its difficulty level (`"Easy"`, `"Medium"`, or `"Hard"`)
-
-    Example:
-    ```json
-    {{
-    "module_difficulty": {{
-        "Introduction to LangChain": "Easy",
-        "Prompt Engineering in LangChain": "Medium",
-        "Building Agents with Tools": "Hard"
-    }}
-    }}
-    """)
-    ])
-
-    input_values = {
-            "topic": prompt.topic,
-            "level": prompt.level,
-            "use_scraping": prompt.use_scraping, # scraping is disabled for now
-            "include_code": prompt.include_code,
-            "audience": prompt.audience or "general learners",
-            "duration": prompt.duration or "auto",
-            "include_code": "yes" if prompt.include_code else "no",
-            "custom_urls": prompt.custom_urls
-    }
-    
-    chain = prompt_template|llm|parser
-    
-    
-    return chain.invoke(input_values)
-
-def generate_module_content(module: dict, full_outline: dict) -> str:
-    """
-    Expand a single module into a fully detailed lesson using full outline context.
-    """
-
-    print("Generating module content")
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a professional technical course creator. Your job is to expand individual modules "
-         "from a course outline into rich, structured educational content. You're allowed to creatively "
-         "add relevant subtopics and tasks if they benefit the learner."),
-        ("user", 
-         "Here is the full course outline for context:\n\n{outline}\n\n"
-         "Now generate the full lesson content for the following module:\n\n{module}\n\n"
-         "Please include:\n"
-         "- Detailed explanation of each subtopic\n"
-         "- Code examples (from outline or inferred)\n"
-         "- Real-world applications\n"
-         "- Links to resources\n"
-         "- Hands-on exercises or practice tasks\n")
-    ])
-    
-    # print(type(full_outline))
-    # print(type(module))
-
-    chain = prompt | llm | StrOutputParser()
-    return chain.invoke({
-        "outline": full_outline,
-        "module": module
-    })
-
-
-def parse_user_input_for_course_outline(user_input: str)->CoursePrompt: #named this way as might have to make another to parse input for course generation if we make specified schema for that
-    """parse the user input into the desired format to generate course outline"""
-    llm_structured_output = llm.with_structured_output(CoursePrompt)
-    return llm_structured_output.invoke(user_input)
-
-def get_user_id(config: RunnableConfig) -> str:
-    return config.get("configurable", {}).get("user_id", "anonymous")
+# def get_user_id(config: RunnableConfig) -> str:
+#     return config.get("configurable", {}).get("user_id", "anonymous")
 
 
 ## ACTUAL AGENT CODE
 
 class AgentState(TypedDict):
+    user_id: int
+    course_id: str
     messages: Annotated[Sequence[BaseMessage], add_messages]
     course_outline: str
     course: str
@@ -250,33 +133,87 @@ class AgentState(TypedDict):
 # def get_yt_links(content: str):
 #     pass
 
-def save_recall_memory(memory: str, config: RunnableConfig) -> str:
-    """Save memory to vectorstore for later semantic retrieval."""
-    user_id = get_user_id(config)
-    document = Document(
-        page_content=memory, id=str(uuid.uuid4()), metadata={"user_id": user_id}
+# @tool
+# def save_recall_memory(memory: AgentState, config: RunnableConfig) -> str:
+def save_recall_memory(memory: AgentState) -> str:
+    """Save memory(course content and course outline) to vectorstore (supabase) for later semantic retrieval whenever course content or course outline is generated or updated."""
+    # agent_db = get_db()
+    if not vector_store:
+        raise ValueError("Database connection not established.")
+    # user_id = get_user_id(config)
+    # document = Document(
+    #     page_content=memory, id=str(uuid.uuid4()), metadata={"user_id": user_id}
+    # )
+    # vector_store.add_documents([document])
+    course_outline = json.dumps(memory["course_outline"]) if isinstance(memory["course_outline"], str) else memory["course_outline"]
+    course_outline_embedding = embeddings.embed_query(course_outline)
+    
+    course_content_embedding = None
+    if memory["course"]:
+        course = json.dumps(memory["course"]) if isinstance(memory["course"], str) else memory["course"]
+        course_content_embedding = embeddings.embed_query(course)
+    
+    
+    
+    # if "user_id" not in memory or "course_id" not in memory:
+    #     raise ValueError("Missing user_id or course_id in state")
+
+    
+    new_memory = AgentMemory(
+        user_id=memory["user_id"],
+        course_id=memory["course_id"],
+        course_outline=memory["course_outline"] if memory["course_outline"] else "",
+        course_outline_embeddings=course_outline_embedding if course_outline_embedding else None,
+        course_content=memory["course"] if memory["course"] else "",
+        course_content_embeddings=course_content_embedding if course_content_embedding else None,
+        final_course=memory["generated_modules"] if memory["generated_modules"] else "",
+        final_course_outline=memory["course_outline"] if memory["course_outline"] else "",
+        final_course_outline_embeddings=course_outline_embedding if course_outline_embedding else None
     )
-    recall_vector_store.add_documents([document])
+    
+    vector_store.add(new_memory)
+    vector_store.commit()
+    vector_store.refresh(new_memory)
+    
     return memory
 
+# @tool
+# def search_recall_memories(query: str, config: RunnableConfig, user_id: int, course_id: str) -> List[str]:
+def search_recall_memories(query: str, user_id: int, course_id: str) -> List[str]:
+    """Search for semantically similar memory chunks when generating the course outline i.e. when the agent is initially activated."""
+    # agent_db = get_db()
+    query_embedding = embeddings.embed_query(query)
+    if not vector_store:
+        raise ValueError("Database connection not established.")
+    # user_id = get_user_id(config)
+
+    # def _filter_function(doc: Document) -> bool:
+    #     return doc.metadata.get("user_id") == user_id
+
+    # documents = vector_store.similarity_search(
+    #     query, k=3, filter=_filter_function
+    # )
+    # return [document.page_content for document in documents]
+    
+    results = vector_store.execute(text("""
+        SELECT course_content 
+        FROM agent_memory 
+        WHERE user_id = :user_id AND course_id = :course_id 
+        ORDER BY course_content_embedding <-> :query_embedding 
+        LIMIT 3
+    """), {
+        "user_id": user_id,
+        "course_id": course_id,
+        "query_embedding": query_embedding
+    })
+    
+    return [row[0] for row in results]
 
 
-def search_recall_memories(query: str, config: RunnableConfig) -> List[str]:
-    """Search for relevant memories."""
-    user_id = get_user_id(config)
 
-    def _filter_function(doc: Document) -> bool:
-        return doc.metadata.get("user_id") == user_id
+# tools = [save_recall_memory, search_recall_memories]
 
-    documents = recall_vector_store.similarity_search(
-        query, k=3, filter=_filter_function
-    )
-    return [document.page_content for document in documents]
-
-
-# tools = [edit_course_outline, save_recall_memory, search_recall_memories]
-
-# llm_with_tools = ChatOpenAI(model = "gpt-4.1-nano", temperature=0).bind_tools(tools)
+# llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0).bind_tools(tools)
 
 def course_outline_generation_node(state: AgentState)->AgentState:
     """Generate the course outline based on user input."""
@@ -293,7 +230,11 @@ def course_outline_generation_node(state: AgentState)->AgentState:
     # save_recall_memory(json.dumps(outline, indent=2), config=RunnableConfig(configurable={"user_id": user_id}))
     print("\nGenerated course outline\n\n")
     
+    
+    
     return{
+        **state,
+        "current_outline": outline.model_dump_json(indent=2),
         "messages": list(state["messages"])+ [HumanMessage(content = user_message.content), AIMessage(content = outline.model_dump_json(indent=2))],
         "course_outline": outline.model_dump_json(indent=2),
         "course": state["course"]
@@ -323,11 +264,16 @@ def edit_course_outline_node(current_outline: str, user_edit_request: str, state
     print(type(updated_outline))
 
     return {
+        **state,
+        "course_outline": updated_outline.model_dump_json(indent=2),
+        "current_outline": updated_outline.model_dump_json(indent=2),
+        "user_edit_request": user_edit_request,
         "messages": list(state["messages"]) + [HumanMessage(content = user_edit_request + "Current course outline is: " + current_outline), AIMessage(content = updated_outline.model_dump_json(indent=2))]
         }
 
 def to_edit_outline_node(state: AgentState)->str:
     """Determine if user wants to edit the outline or continue to the next step to generate a course."""
+    save_recall_memory(state)
     last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
     if not last_human:
         return "course_generation"
@@ -375,6 +321,7 @@ def to_generate_course_node(state: AgentState) -> AgentState:
     
 def check_user_feedback_node(state: AgentState) -> str:
     """Check user feedback on the last generated module."""
+    save_recall_memory(state)
     if not state["awaiting_approval"]:
         return "generate_module"
 
@@ -428,15 +375,20 @@ graph = StateGraph(AgentState)
 # --- Step 1: Add Nodes ---
 graph.add_node("course_outline_generation", course_outline_generation_node)
 graph.add_node("edit_course_outline", edit_course_outline_node)
-graph.add_node("to_edit_outline", to_edit_outline_node)
+# graph.add_node("to_edit_outline", to_edit_outline_node)
+# graph.add_node("tools", ToolNode(tools))
 
 graph.add_node("course_generation", to_generate_course_node)
-graph.add_node("check_user_feedback", check_user_feedback_node)
+# graph.add_node("check_user_feedback", check_user_feedback_node)
 graph.add_node("edit_module", edit_current_module_node)
 graph.add_node("advance_module", advance_module_node)
 
 # Set Entry Point ---
 graph.set_entry_point("course_outline_generation")
+
+# graph.add_edge("tools", "course_outline_generation")
+
+# graph.add_edge("course_outline_generation", "tools")
 
 # After outline generation, check user intent ---
 graph.add_conditional_edges(
@@ -448,25 +400,50 @@ graph.add_conditional_edges(
     }
 )
 
+# graph.add_edge("course_outline_generation", "to_edit_outline")
+# graph.add_edge("edit_course_outline", "to_edit_outline")
+
+graph.add_conditional_edges(
+    "edit_course_outline",
+    to_edit_outline_node,
+    {
+        "edit_course_outline": "edit_course_outline",
+        "course_generation": "course_generation"
+    }
+)
+    
+
+
 # After editing outline, regenerate course ---
 graph.add_edge("edit_course_outline", "course_generation")
 
 # After generating a module, check user feedback ---
+# graph.add_edge("course_generation", "check_user_feedback")
+
 graph.add_conditional_edges(
     "course_generation",
     check_user_feedback_node,
     {
         "generate_module": "advance_module",      # If user approves
         "edit_module": "edit_module",             # If user wants changes
-        "check_user_feedback": "check_user_feedback",  # If unclear
+        # "check_user_feedback": "check_user_feedback",  # If unclear
     }
 )
 
 #  After editing a module, re-check user feedback ---
-graph.add_edge("edit_module", "check_user_feedback")
+# graph.add_edge("edit_module", "check_user_feedback")
+graph.add_conditional_edges(
+    "edit_module",
+    check_user_feedback_node,
+    {
+        "generate_module": "advance_module",      # If user approves
+        "edit_module": "edit_module",             # If user wants changes
+        # "check_user_feedback": "check_user_feedback",  # If unclear
+    }
+)
 
 #  If unclear feedback, ask again (loop) ---
-graph.add_edge("check_user_feedback", "course_generation")
+# graph.add_edge("check_user_feedback", "course_generation")
 
 #  After user approves a module, move to next or finish ---
 graph.add_conditional_edges(
@@ -483,12 +460,48 @@ graph.add_conditional_edges(
 )
 
 
+
 agent = graph.compile()
 
+# mermaid_code = agent.get_graph().draw_mermaid()
+# Path("graph_diagram.mmd").write_text(mermaid_code)
+# print("✅ Mermaid graph saved to graph_diagram.mmd")
 
-## Temporary fix to run the agent with a dummy input until the actual API is set up
+
+# Temporary fix to run the agent with a dummy input until the actual API is set up
+# if __name__ == "__main__":
+#     user_message = HumanMessage(content="""
+#     Create a course on LangChain Agents for intermediate developers.
+
+#     Target audience: Developers who are familiar with Python and want to learn AI agents  
+#     Estimated duration: 4 weeks  
+#     Include code examples: Yes  
+#     Custom URLs: ["https://python.langchain.com", "https://docs.smith.langchain.com"]
+#     """)
+
+#     initial_state = {
+#         "messages": [user_message],
+#         "course_outline": "",
+#         "course": "",
+#         "current_outline": None,
+#         "user_edit_request": None,
+#         "module_index": 0,
+#         "generated_modules": [],
+#         "awaiting_approval": False
+#     }
+
+#     state = agent.invoke(initial_state)
+
+#     print("\n\n========== GENERATED COURSE ==========\n\n")
+#     print(state["course"])
+
 if __name__ == "__main__":
-    user_message = HumanMessage(content="""
+    user_id = uuid4()
+    course_id = str(uuid4())
+    print(f"User ID: {user_id}, Course ID: {course_id}")
+
+    # Human message prompting course generation
+    user_message = HumanMessage(content=f"""
     Create a course on LangChain Agents for intermediate developers.
 
     Target audience: Developers who are familiar with Python and want to learn AI agents  
@@ -497,18 +510,23 @@ if __name__ == "__main__":
     Custom URLs: ["https://python.langchain.com", "https://docs.smith.langchain.com"]
     """)
 
+    # Initial state passed into the agent
     initial_state = {
+        "user_id": user_id,
+        "course_id": course_id,
         "messages": [user_message],
         "course_outline": "",
-        "course": "",
         "current_outline": None,
         "user_edit_request": None,
         "module_index": 0,
         "generated_modules": [],
-        "awaiting_approval": False
+        "awaiting_approval": False,
+        "course": ""  # New: to store the final course content
     }
 
+    # Invoke the agent with the state
     state = agent.invoke(initial_state)
 
+    # Output the final course
     print("\n\n========== GENERATED COURSE ==========\n\n")
     print(state["course"])
