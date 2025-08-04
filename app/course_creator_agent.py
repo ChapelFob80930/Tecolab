@@ -496,8 +496,8 @@ agent = graph.compile()
 #     print(state["course"])
 
 if __name__ == "__main__":
-    user_id = uuid4()
-    course_id = str(uuid4())
+    user_id = "user_" +str(uuid4())
+    course_id = "course_" + str(uuid4())
     print(f"User ID: {user_id}, Course ID: {course_id}")
 
     # Human message prompting course generation
