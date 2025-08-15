@@ -1,3 +1,4 @@
+from pprint import pprint
 from typing import Annotated, Sequence, List, Literal, Optional
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
@@ -44,6 +45,10 @@ from sqlalchemy import text
 from typing import List
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
+from typing import Literal
+from langgraph.types import interrupt, Command
+from langgraph.checkpoint.memory import MemorySaver
+import operator
 
 
 
@@ -55,11 +60,11 @@ embeddings = OpenAIEmbeddings()
 
 vector_store: Session = next(get_db())
 
-llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0)
+llm = ChatOpenAI(model = "gpt-4o-mini", temperature=0)
 
 ## HELPER FUNCTIONS
 
-def intent_checker(message: BaseMessage):
+def intent_checker(HumanMessage: str) -> str:
     intent_check_prompt = PromptTemplate.from_template(
         """
             You are a routing assistant for an AI course creation agent.
@@ -78,7 +83,7 @@ def intent_checker(message: BaseMessage):
 
     intent_chain = (intent_check_prompt | llm | StrOutputParser())
     
-    return intent_chain.invoke({"user_input": message.content})
+    return intent_chain.invoke({"user_input": HumanMessage})
 
 def check_module_feedback_intent(message: str) -> str:
     """
@@ -109,18 +114,26 @@ def check_module_feedback_intent(message: str) -> str:
 
 
 ## ACTUAL AGENT CODE
+#Reducer function to keep the first value, ignore subsequent ones
+  
+
 
 class AgentState(TypedDict):
-    user_id: int
-    course_id: str
+    # user_id: str
+    user_id: Annotated[str, operator.add]
+    # course_id: str
+    course_id: Annotated[str, operator.add]
     messages: Annotated[Sequence[BaseMessage], add_messages]
     course_outline: str
+    # course_outline: Annotated[str, operator.add]
     course: str
     current_outline: Optional[str]  # for tools
-    user_edit_request: Optional[str]  # for tools
     module_index: int                      # New: which module is currently being generated
     generated_modules: List[str]          # New: list of fully generated module texts
     awaiting_approval: bool               # New: whether we're waiting for user input
+    status: Optional[Literal["approved", "feedback"]]  # New: text to review, if any
+    user_edit_request: Optional[str]
+    step: Literal["course_outline_generation", "course_generation"]
 
 
 
@@ -138,6 +151,7 @@ class AgentState(TypedDict):
 def save_recall_memory(memory: AgentState) -> str:
     """Save memory(course content and course outline) to vectorstore (supabase) for later semantic retrieval whenever course content or course outline is generated or updated."""
     # agent_db = get_db()
+    print("Saving memory to vector store...")
     if not vector_store:
         raise ValueError("Database connection not established.")
     # user_id = get_user_id(config)
@@ -145,6 +159,8 @@ def save_recall_memory(memory: AgentState) -> str:
     #     page_content=memory, id=str(uuid.uuid4()), metadata={"user_id": user_id}
     # )
     # vector_store.add_documents([document])
+    print(memory["user_id"])
+    print(memory["course_id"])
     course_outline = json.dumps(memory["course_outline"]) if isinstance(memory["course_outline"], str) else memory["course_outline"]
     course_outline_embedding = embeddings.embed_query(course_outline)
     
@@ -209,6 +225,31 @@ def search_recall_memories(query: str, user_id: int, course_id: str) -> List[str
     
     return [row[0] for row in results]
 
+# def human_approval(state: AgentState): #-> Command[Literal["approved_node", "rejected_node"]]:
+#     # is_approved = interrupt(
+#     #     {
+#     #         "question": "Please review the generated content and approve or request changes.",
+#     #         # Surface the output that should be
+#     #         # reviewed and approved by the human.
+#     #         "llm_output":status"] if state["to_review"] else "No content to review.",
+#     #     }
+#     # )
+    
+#     user_input = input("Please review the generated content and approve or request changes (type 'approve' to approve, 'edit' to request changes): ").strip().lower()
+
+#     # if is_approved:
+#     #     return Command(goto="approved_node")
+#     # else:
+#     #     return Command(goto="rejected_node")
+    
+#     return {
+#         **state,
+#         "messages": list(state["messages"]) + [HumanMessage(content=user_input)],
+#         "user_edit_request" : user_input
+#         }
+
+def human_feedback(state: AgentState):
+    pass
 
 
 # tools = [save_recall_memory, search_recall_memories]
@@ -244,6 +285,8 @@ def course_outline_generation_node(state: AgentState)->AgentState:
 def edit_course_outline_node(current_outline: str, user_edit_request: str, state: AgentState) -> AgentState:
     """Modify the course outline JSON based on user's edit request. Takes in the original outline and user's edit request as input. Always return valid updated JSON output."""
     
+    print("Editing course outline based on user request...")
+    
     parser = PydanticOutputParser(pydantic_object=CourseOutline)
 
     prompt = ChatPromptTemplate.from_messages([
@@ -273,8 +316,10 @@ def edit_course_outline_node(current_outline: str, user_edit_request: str, state
 
 def to_edit_outline_node(state: AgentState)->str:
     """Determine if user wants to edit the outline or continue to the next step to generate a course."""
+    print("Checking if user wants to edit outline or continue...")
     save_recall_memory(state)
-    last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+    # last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+    last_human = state.get("user_edit_request", None)
     if not last_human:
         return "course_generation"
     
@@ -282,6 +327,7 @@ def to_edit_outline_node(state: AgentState)->str:
     return "edit_course_outline" if intent.strip() == "edit_outline" else "course_generation"
 
 def to_generate_course_node(state: AgentState) -> AgentState:
+    print("Generating course content based on outline...")
     outline = json.loads(state["course_outline"])
     index = state.get("module_index", 0)
     modules = outline.get("modules", [])
@@ -321,13 +367,16 @@ def to_generate_course_node(state: AgentState) -> AgentState:
     
 def check_user_feedback_node(state: AgentState) -> str:
     """Check user feedback on the last generated module."""
+    print("Checking user feedback...")
     save_recall_memory(state)
     if not state["awaiting_approval"]:
         return "generate_module"
 
-    last_msg = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
-    if not last_msg:
-        return "generate_module"
+    # last_msg = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+    # if not last_msg:
+    #     return "generate_module"
+    
+    last_msg = state["user_edit_request"]
 
     intent = check_module_feedback_intent(last_msg.content)
 
@@ -341,6 +390,7 @@ def check_user_feedback_node(state: AgentState) -> str:
 
 def edit_current_module_node(state: AgentState) -> AgentState:
     """Edit the last generated module based on user feedback."""
+    print("Editing current module based on user feedback...")
     outline = json.loads(state["course_outline"])
     index = state["module_index"]
     modules = outline.get("modules", [])
@@ -362,6 +412,8 @@ def edit_current_module_node(state: AgentState) -> AgentState:
     }
     
 def advance_module_node(state: AgentState) -> AgentState:
+    """Advance to the next module or finish if all modules are done."""
+    print("Advancing to next module...")
     return {
         **state,
         "module_index": state["module_index"] + 1,
@@ -370,14 +422,14 @@ def advance_module_node(state: AgentState) -> AgentState:
 
 
 
-graph = StateGraph(AgentState)
+graph = StateGraph(state_schema=AgentState, )
 
 # --- Step 1: Add Nodes ---
 graph.add_node("course_outline_generation", course_outline_generation_node)
 graph.add_node("edit_course_outline", edit_course_outline_node)
 # graph.add_node("to_edit_outline", to_edit_outline_node)
 # graph.add_node("tools", ToolNode(tools))
-
+graph.add_node('human_feedback', human_feedback)
 graph.add_node("course_generation", to_generate_course_node)
 # graph.add_node("check_user_feedback", check_user_feedback_node)
 graph.add_node("edit_module", edit_current_module_node)
@@ -385,6 +437,7 @@ graph.add_node("advance_module", advance_module_node)
 
 # Set Entry Point ---
 graph.set_entry_point("course_outline_generation")
+graph.add_edge( "course_outline_generation", "human_feedback")
 
 # graph.add_edge("tools", "course_outline_generation")
 
@@ -392,7 +445,7 @@ graph.set_entry_point("course_outline_generation")
 
 # After outline generation, check user intent ---
 graph.add_conditional_edges(
-    "course_outline_generation",
+    "human_feedback",
     to_edit_outline_node,
     {
         "edit_course_outline": "edit_course_outline",
@@ -400,28 +453,32 @@ graph.add_conditional_edges(
     }
 )
 
-# graph.add_edge("course_outline_generation", "to_edit_outline")
-# graph.add_edge("edit_course_outline", "to_edit_outline")
+## graph.add_edge("course_outline_generation", "to_edit_outline")
+## graph.add_edge("edit_course_outline", "to_edit_outline")
+graph.add_edge("edit_course_outline", "human_feedback")
 
-graph.add_conditional_edges(
-    "edit_course_outline",
-    to_edit_outline_node,
-    {
-        "edit_course_outline": "edit_course_outline",
-        "course_generation": "course_generation"
-    }
-)
+# graph.add_conditional_edges(
+#     "human_feedback",
+#     to_edit_outline_node,
+#     {
+#         "edit_course_outline": "edit_course_outline",
+#         "course_generation": "course_generation"
+#     }
+# )
     
 
 
 # After editing outline, regenerate course ---
-graph.add_edge("edit_course_outline", "course_generation")
+# graph.add_edge("edit_course_outline", "course_generation")
 
 # After generating a module, check user feedback ---
 # graph.add_edge("course_generation", "check_user_feedback")
 
+graph.add_edge("course_generation", "human_feedback")
+
+
 graph.add_conditional_edges(
-    "course_generation",
+    "human_feedback",
     check_user_feedback_node,
     {
         "generate_module": "advance_module",      # If user approves
@@ -432,15 +489,17 @@ graph.add_conditional_edges(
 
 #  After editing a module, re-check user feedback ---
 # graph.add_edge("edit_module", "check_user_feedback")
-graph.add_conditional_edges(
-    "edit_module",
-    check_user_feedback_node,
-    {
-        "generate_module": "advance_module",      # If user approves
-        "edit_module": "edit_module",             # If user wants changes
-        # "check_user_feedback": "check_user_feedback",  # If unclear
-    }
-)
+
+graph.add_edge("edit_module", "human_feedback")
+## graph.add_conditional_edges(
+##     "edit_module",
+##     check_user_feedback_node,
+##     {
+##         "generate_module": "advance_module",      # If user approves
+##         "edit_module": "edit_module",             # If user wants changes
+##         # "check_user_feedback": "check_user_feedback",  # If unclear
+##     }
+## )
 
 #  If unclear feedback, ask again (loop) ---
 # graph.add_edge("check_user_feedback", "course_generation")
@@ -459,9 +518,9 @@ graph.add_conditional_edges(
     }
 )
 
+memory = MemorySaver()
 
-
-agent = graph.compile()
+agent = graph.compile(interrupt_before=["human_feedback"], checkpointer=memory)
 
 # mermaid_code = agent.get_graph().draw_mermaid()
 # Path("graph_diagram.mmd").write_text(mermaid_code)
@@ -501,14 +560,25 @@ if __name__ == "__main__":
     print(f"User ID: {user_id}, Course ID: {course_id}")
 
     # Human message prompting course generation
-    user_message = HumanMessage(content=f"""
-    Create a course on LangChain Agents for intermediate developers.
+    # user_message = HumanMessage(content=f"""
+    # Create a course on LangChain Agents for intermediate developers.
 
-    Target audience: Developers who are familiar with Python and want to learn AI agents  
+    # Target audience: Developers who are familiar with Python and want to learn AI agents  
+    # Estimated duration: 4 weeks  
+    # Include code examples: Yes  
+    # Custom URLs: ["https://python.langchain.com", "https://docs.smith.langchain.com"]
+    # """)
+
+    # Human message prompting course generation
+    user_message = HumanMessage(content=f"""
+    Create a course on DSA for interviews for beginner developers.
+
+    Target audience: Developers who want to learn Data Structures and Algorithms for interviews 
     Estimated duration: 4 weeks  
     Include code examples: Yes  
-    Custom URLs: ["https://python.langchain.com", "https://docs.smith.langchain.com"]
+    Custom URLs: ["https://takeuforward.org/strivers-a2z-dsa-course/strivers-a2z-dsa-course-sheet-2/"]
     """)
+
 
     # Initial state passed into the agent
     initial_state = {
@@ -524,9 +594,22 @@ if __name__ == "__main__":
         "course": ""  # New: to store the final course content
     }
 
+    config = {"configurable": {"thread_id": "1"}}
+
     # Invoke the agent with the state
-    state = agent.invoke(initial_state)
+    state = agent.invoke(initial_state, config)
+    
+    state_test = agent.get_state(config)
+    pprint(state_test)
+    
+    agent.update_state(config, {
+    "user_edit_request": "I love it go ahead and generate the course.",
+    # "human_comment": "Make your answer only one sentence short!"
+})
+    
+    resumed_result = agent.invoke(None, config)
+    resumed_result
 
     # Output the final course
     print("\n\n========== GENERATED COURSE ==========\n\n")
-    print(state["course"])
+    print(state["generated_modules"])

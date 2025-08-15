@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     supabase_database_hostname: str
     supabase_database_port: str
     supabase_database_name: str
-    supabase_api_key: str
+    # supabase_api_key: str
     
     class Config:
         env_file = ".env"
