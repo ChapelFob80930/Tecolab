@@ -29,17 +29,17 @@ from langgraph.prebuilt import ToolNode
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_tavily import TavilySearch
 # from .course_outline_generation import generate_course_outline ##Note: Same as above, will uncomment once API is setup
-from course_outline_generation import generate_course_outline
-from schemas import CourseOutline, CoursePrompt
+from .course_outline_generation import generate_course_outline
+from .schemas import CourseOutline, CoursePrompt
 import tiktoken
 from langchain_core.runnables import RunnableConfig
 import uuid
-from course_outline_generation import parse_user_input_for_course_outline, generate_course_outline
-from course_generation import generate_module_content
+from .course_outline_generation import parse_user_input_for_course_outline, generate_course_outline
+from .course_generation import generate_module_content
 from pathlib import Path
 # from vector_database import get_vector_db
-from supabase import get_db, session_scope
-from supabase_models import AgentMemory
+from .supabase import get_db, session_scope
+from .supabase_models import AgentMemory
 from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import text
 from typing import List
@@ -51,8 +51,8 @@ from langgraph.checkpoint.memory import MemorySaver
 import operator
 from langchain_ollama.llms import OllamaLLM
 from langchain_ollama import OllamaEmbeddings
-from supabase import SessionLocal
-from checkpoint import SupabaseCheckpointSaver
+from .supabase import SessionLocal
+from .checkpoint import SupabaseCheckpointSaver
 
 
 load_dotenv()
@@ -116,9 +116,6 @@ def check_module_feedback_intent(message: str) -> str:
     return chain.invoke({"message": message}).strip().lower()
 
 
-# def get_user_id(config: RunnableConfig) -> str:
-#     return config.get("configurable", {}).get("user_id", "anonymous")
-
 
 ## ACTUAL AGENT CODE
 #Reducer function to keep the first value, ignore subsequent ones
@@ -129,18 +126,18 @@ class AgentState(TypedDict):
     # user_id: str
     user_id: str
     # course_id: str
-    course_id: str
+    course_id: dict
     messages: Annotated[Sequence[BaseMessage], add_messages]
     course_outline: str
     # course_outline: Annotated[str, operator.add]
     course: str
-    current_outline: Optional[str]  # for tools
+    current_content: Optional[str]  # for tools
     module_index: int                      # New: which module is currently being generated
     generated_modules: List[str]          # New: list of fully generated module texts
     awaiting_approval: bool               # New: whether we're waiting for user input
     # status: Optional[Literal["approved", "feedback"]]  # New: text to review, if any
     user_edit_request: Optional[str]
-    # step: Literal["course_outline_generation", "course_generation"]
+    # step: Literal["course_outline_generation", "course_generation", "finished"]
 
 
 
@@ -287,13 +284,14 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
         return {
             **state,
             "course_outline": updated_outline.model_dump_json(indent=2),
-            "current_outline": updated_outline.model_dump_json(indent=2),
+            "current_content": {"outline":updated_outline.model_dump_json(indent=2)},
             "messages": list(state["messages"]) + [
                 HumanMessage(content=f"{state['user_edit_request']} Current course outline is: {state['current_outline']}"),
                 AIMessage(content=updated_outline.model_dump_json(indent=2))
             ],
             # "status": "feedback",  # still awaiting feedback
-            "awaiting_approval": True  # stay in approval loop until confirmed
+            "awaiting_approval": True,  # stay in approval loop until confirmed
+            "step": "course_outline_generation"
         }
 
     # Otherwise, generate the initial course outline
@@ -305,7 +303,7 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
 
     return {
         **state,
-        "current_outline": outline_json,
+        "current_content": {"outline":outline_json},
         "course_outline": outline_json,
         "messages": list(state["messages"]) + [
             HumanMessage(content=user_message.content),
@@ -313,7 +311,7 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
         ],
         "awaiting_approval": True,  # Now waiting for user input
         # "status": "feedback",       # Means: we want feedback
-        "step": "course_outline_generation"
+        # "step": "course_outline_generation"
     }
 
 
@@ -351,7 +349,9 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
             **state,
             "course": final_course,
             "messages": list(state["messages"]) + [AIMessage(content="All modules generated!")],
-            "awaiting_approval": False
+            "awaiting_approval": False,
+            "current_content": {"outline": state["course_outline"], "course": final_course},
+            # "step": "finished"
         }
 
     # --- CASE 2: Edit mode ---
@@ -370,6 +370,7 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
 
         return {
             **state,
+            "current_content": {"updated_module": edited_text},
             "generated_modules": updated_modules,
             "messages": list(state["messages"]) + [HumanMessage(content=state["user_edit_request"]),AIMessage(content=edited_text)],
             "awaiting_approval": True,
@@ -386,11 +387,13 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
 
     return {
         **state,
+        "current_content": {"module": module_text},
         "generated_modules": updated_modules,
         "messages": list(state["messages"]) + [AIMessage(content=module_text)],
         "awaiting_approval": True,  # wait for approval before advancing
         "module_index": index,  # stay until approved
-        "user_edit_request": None
+        "user_edit_request": None,
+        # "step": "course_generation"
     }
 
     
@@ -518,6 +521,9 @@ if __name__ == "__main__":
 
     # Start graph
     state = agent.invoke(initial_state, config)
+    
+    state_test = agent.get_state(config)
+    pprint(state_test)
 
     # Approve outline
     print("Awaiting User feedback on outline")

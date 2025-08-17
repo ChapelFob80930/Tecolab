@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import Optional, Annotated, List, Literal, Dict
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from enum import Enum
 
@@ -16,6 +16,7 @@ class UserBase(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow, description="The date and time when the user was created")
     
 class UserCreate(UserBase):
+    id: str = Field(default_factory=lambda: "user_"+str(uuid4()), description="The user's unique identifier")
     password: str = Field(..., min_length=6, description="The user's password")
     skills: Optional[str] = Field(None, description="The user's skills")
     goal: Optional[str] = Field(None, description="The user's goal")
@@ -43,7 +44,7 @@ class Token(BaseModel):
     
 class TokenData(BaseModel):
     id: Optional[int] = None
-    email: Optional[EmailStr] = None
+    role: Optional[str] = None
     
 
 # For now will be modified later
@@ -126,3 +127,18 @@ class CourseOutline(BaseModel):
     # thumbnail_url: str
     module_difficulty: Dict[str,str]
     
+
+# --- Start Graph Run ---
+class StartRequest(BaseModel):
+    human_request: str
+
+# --- Resume Paused Graph Run ---
+class ResumeRequest(BaseModel):
+    thread_id: str
+    user_edit_request: str
+
+# --- Minimal API Response ---
+class GraphResponse(BaseModel):
+    thread_id: str
+    run_status: Literal["finished", "user_feedback"]
+    assistant_response: Optional[str] = None    

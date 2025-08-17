@@ -6,7 +6,7 @@ from typing import Any, Optional, Iterator, AsyncIterator, Sequence
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from sqlalchemy import text
-from supabase import SessionLocal
+from .supabase import SessionLocal
 
 
 
