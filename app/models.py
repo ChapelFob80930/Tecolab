@@ -16,7 +16,7 @@ class RoleEnum(str, enum.Enum):
 class User(Base):
     __tablename__ = "users"
     
-    id = Column(String, primary_key=True, nullable=False)
+    id = Column(String, primary_key=True, nullable=False, server_default=text("'user_' || gen_random_uuid()::text"))
     email = Column(String, nullable=False, unique=True)
     password = Column(String, nullable=False)
     first_name = Column(String, nullable=False)

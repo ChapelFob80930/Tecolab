@@ -1,4 +1,5 @@
 import os
+from uuid import uuid4
 from .. import schemas,models, utils
 from fastapi import FastAPI, Response, status, HTTPException, Depends, APIRouter
 from sqlalchemy.orm import Session
@@ -21,6 +22,8 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         new_user.role = RoleEnum.admin
     
     #if it is not possible to make email ending with @tecolab.dev then we uncomment below code and add required env variables
+    
+    new_user.id = "user_"+str(uuid4())  # Generate a unique ID for the user
         
     TRUSTED_ADMINS = os.getenv("TRUSTED_ADMIN_EMAILS", "").split(",")
 

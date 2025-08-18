@@ -24,7 +24,7 @@ class UserCreate(UserBase):
     wants_to_learn: Optional[str] = Field(None, description="What the user wants to learn")
     
 class UserOut(BaseModel):
-    id: int
+    id: str
     email: EmailStr
     created_at: datetime
     first_name: str
@@ -43,7 +43,7 @@ class Token(BaseModel):
     token_type: str
     
 class TokenData(BaseModel):
-    id: Optional[int] = None
+    id: Optional[str] = None
     role: Optional[str] = None
     
 
