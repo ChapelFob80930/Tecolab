@@ -6,7 +6,7 @@ from uuid import uuid4
 import json
 from ..config import settings
 from ..agent2 import agent
-from ..models import StartRequest, GraphResponse, ResumeRequest
+from ..schemas import StartRequest, GraphResponse, ResumeRequest
 import logging
 
 logger = logging.getLogger("tecolab_app")

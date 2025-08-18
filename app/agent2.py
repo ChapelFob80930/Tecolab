@@ -49,25 +49,25 @@ from typing import Literal
 from langgraph.types import interrupt, Command
 from langgraph.checkpoint.memory import MemorySaver
 import operator
-from langchain_ollama.llms import OllamaLLM
-from langchain_ollama import OllamaEmbeddings
+# from langchain_ollama.llms import OllamaLLM
+# from langchain_ollama import OllamaEmbeddings
 from .supabase import SessionLocal
 from .checkpoint import SupabaseCheckpointSaver
 
 
 load_dotenv()
 
-# embeddings = OpenAIEmbeddings()
-embeddings = OllamaEmbeddings(
-    model="llama2",
-)
+embeddings = OpenAIEmbeddings()
+# embeddings = OllamaEmbeddings(
+#     model="llama2",
+# )
 
 # recall_vector_store = InMemoryVectorStore(OpenAIEmbeddings())
 
 # vector_store: Session = next(get_db())
 
-# llm = ChatOpenAI(model = "gpt-4o-mini", temperature=0)
-llm = OllamaLLM(model="llama2", temperature=0)
+llm = ChatOpenAI(model = "gpt-4o-mini", temperature=0)
+# llm = OllamaLLM(model="llama2", temperature=0)
 
 ## HELPER FUNCTIONS
 

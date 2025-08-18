@@ -11,7 +11,7 @@ from .config import settings
 
 load_dotenv()
 
-llm = ChatOpenAI(model = "gpt-4.1-nano", temperature=0, api_key=settings.openai_api_key)
+llm = ChatOpenAI(model = "gpt-4.1-mini", temperature=0, api_key=settings.openai_api_key)
 
 parser = PydanticOutputParser(pydantic_object=CourseOutline)
 
