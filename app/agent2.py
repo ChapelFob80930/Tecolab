@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import json
 from uuid import uuid4
+from pathlib import Path
 # from .config import settings  ##NOTE: Will uncomment this once API is setup, now using load_dotenv to load environment variables as using this import causes ImportError: attempted relative import with no known parent package but works when called from the main file
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import (
@@ -138,6 +139,7 @@ class AgentState(TypedDict):
     # status: Optional[Literal["approved", "feedback"]]  # New: text to review, if any
     user_edit_request: Optional[str]
     # step: Literal["course_outline_generation", "course_generation", "finished"]
+    review_action: Optional[str]
 
 
 
@@ -205,9 +207,9 @@ def save_recall_memory(memory: AgentState) -> str:
                 "course_id": course_id,
                 "outline": memory["course_outline"] if memory["course_outline"] else "",
                 "outline_vec": course_outline_embedding,
-                "content": memory["generated_modules"] if memory["generated_modules"] else "",
+                "content": "\n\n".join(memory["generated_modules"]) if memory["generated_modules"] else "",
                 "content_vec": course_content_embedding,
-                "final_course":memory["generated_modules"] if memory["generated_modules"] else "",
+                "final_course": "\n\n".join(memory["generated_modules"]) if memory["generated_modules"] else "",
                 "final_outline": memory["course_outline"] if memory["course_outline"] else "",
                 "final_outline_vec": course_outline_embedding if course_outline_embedding else None
             }
@@ -264,20 +266,21 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
     # If we are awaiting approval and the user gave an edit request → run edit mode
     if state.get("awaiting_approval") and state.get("user_edit_request"):
         print("Editing course outline based on user request...")
+        previous_outline = state["course_outline"]
 
         parser = PydanticOutputParser(pydantic_object=CourseOutline)
         prompt = ChatPromptTemplate.from_messages([
             ("system",
              "You are a professional course editor. You will be given a course outline in JSON and an edit request. "
-             "Update the outline based on the request. Do not remove unrelated sections. "
-             f"{parser.get_format_instructions()}\n\n"
+             "Update the outline based on the request. Do not remove unrelated sections.\n\n"
+             "{format_instructions}\n\n"
              "Return only clean valid JSON matching the CourseOutline schema as stated above."),
             ("human", "Original outline:\n{current_outline}\n\nEdit request:\n{edit_request}")
-        ])
+        ]).partial(format_instructions=parser.get_format_instructions())
 
         chain = prompt | llm | parser
         updated_outline = chain.invoke({
-            "current_outline": state["current_outline"],
+            "current_outline": state["course_outline"],   # was state["current_outline"],
             "edit_request": state["user_edit_request"]
         })
 
@@ -286,12 +289,12 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
             "course_outline": updated_outline.model_dump_json(indent=2),
             "current_content": {"outline":updated_outline.model_dump_json(indent=2)},
             "messages": list(state["messages"]) + [
-                HumanMessage(content=f"{state['user_edit_request']} Current course outline is: {state['current_outline']}"),
+                HumanMessage(content=f"{state['user_edit_request']} Current course outline is: {previous_outline}"),
                 AIMessage(content=updated_outline.model_dump_json(indent=2))
             ],
             # "status": "feedback",  # still awaiting feedback
             "awaiting_approval": True,  # stay in approval loop until confirmed
-            "step": "course_outline_generation"
+            # "step": "course_outline_generation"
         }
 
     # Otherwise, generate the initial course outline
@@ -315,18 +318,35 @@ def course_outline_workflow_node(state: AgentState) -> AgentState:
     }
 
 
-def to_edit_outline(state: AgentState)->str:
-    """Determine if user wants to edit the outline or continue to the next step to generate a course."""
+# def to_edit_outline(state: AgentState)->str:
+#     """Determine if user wants to edit the outline or continue to the next step to generate a course."""
+#     print("Checking if user wants to edit outline or continue...")
+#     # save_recall_memory(state)
+#     # last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+#     last_human = state.get("user_edit_request", None)
+#     if not last_human:
+#         return "course_generation"
+#
+#     intent = intent_checker(last_human)
+#     return "edit_course_outline" if intent.strip() == "edit_outline" else "course_generation"
+
+
+def to_edit_outline(state: AgentState) -> str:
+    """Determine if user wants to edit the outline or continue to the next step."""
     print("Checking if user wants to edit outline or continue...")
-    # save_recall_memory(state)
-    # last_human = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+
+    review_action = state.get("review_action")
+    if review_action == "approve":
+        return "course_generation"
+    elif review_action == "reject":
+        return "edit_course_outline"
+
     last_human = state.get("user_edit_request", None)
     if not last_human:
         return "course_generation"
-    
+
     intent = intent_checker(last_human)
     return "edit_course_outline" if intent.strip() == "edit_outline" else "course_generation"
-
 
 
 def course_generation_workflow_node(state: AgentState) -> AgentState:
@@ -339,6 +359,7 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
     outline = json.loads(state["course_outline"])
     index = state.get("module_index", 0)
     modules = outline.get("modules", [])
+    generated_modules = state.get("generated_modules", [])
 
     # --- CASE 1: All modules generated ---
     if index >= len(modules):
@@ -355,26 +376,30 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
         }
 
     # --- CASE 2: Edit mode ---
-    if state.get("awaiting_approval") and state.get("user_edit_request"):
+    module_already_generated = index < len(generated_modules)
+
+    if module_already_generated and state.get("awaiting_approval") and state.get("user_edit_request"):
         print("Editing current module based on user feedback...")
-        current_module = modules[index]
+        current_generated_content = generated_modules[index]  # the REAL lesson, not the outline stub
         edit_request = state["user_edit_request"]
 
         edited_text = llm.invoke(
-            f"Here's the original module: {json.dumps(current_module)}.\n"
-            f"User requested: {edit_request}.\n"
-            "Regenerate the module accordingly."
-        )
+            f"Here's the current lesson content for this module:\n\n{current_generated_content}\n\n"
+            f"User requested this change: {edit_request}\n\n"
+            "Revise the lesson content to incorporate this change, preserving everything else that "
+            "wasn't affected by the request. Return the full revised lesson content in the same "
+            "format and level of detail as the original — do not shorten or summarize unrelated sections."
+        ).content
 
-        updated_modules = state.get("generated_modules", [])[:-1] + [edited_text]
+        updated_modules = generated_modules[:-1] + [edited_text]
 
         return {
             **state,
             "current_content": {"updated_module": edited_text},
             "generated_modules": updated_modules,
-            "messages": list(state["messages"]) + [HumanMessage(content=state["user_edit_request"]),AIMessage(content=edited_text)],
+            "messages": list(state["messages"]) + [HumanMessage(content=state["user_edit_request"]), AIMessage(content=edited_text)],
             "awaiting_approval": True,
-            "module_index": index,  # stay on this module until approved
+            "module_index": index,
             "user_edit_request": None
         }
 
@@ -397,19 +422,43 @@ def course_generation_workflow_node(state: AgentState) -> AgentState:
     }
 
     
+# def check_user_feedback(state: AgentState) -> str:
+#     """Check user feedback on the last generated module."""
+#     print("Checking user feedback...")
+#     # save_recall_memory(state)
+#     if not state["awaiting_approval"]:
+#         return "generate_module"
+#
+#     # last_msg = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
+#     # if not last_msg:
+#     #     return "generate_module"
+#
+#     last_msg = state["user_edit_request"]
+#
+#     intent = check_module_feedback_intent(last_msg.content if isinstance(last_msg, HumanMessage) else last_msg)
+#
+#     if intent == "approve":
+#         return "generate_module"
+#     elif intent == "edit":
+#         return "edit_module"
+#     else:
+#         return "generate_module"
+
 def check_user_feedback(state: AgentState) -> str:
     """Check user feedback on the last generated module."""
     print("Checking user feedback...")
-    # save_recall_memory(state)
     if not state["awaiting_approval"]:
         return "generate_module"
 
-    # last_msg = next((m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), None)
-    # if not last_msg:
-    #     return "generate_module"
-    
-    last_msg = state["user_edit_request"]
+    review_action = state.get("review_action")
 
+    if review_action == "approve":
+        return "generate_module"
+    elif review_action == "reject":
+        return "edit_module"
+
+    # Fallback to LLM classification only if review_action wasn't provided
+    last_msg = state["user_edit_request"]
     intent = check_module_feedback_intent(last_msg.content if isinstance(last_msg, HumanMessage) else last_msg)
 
     if intent == "approve":
@@ -419,22 +468,33 @@ def check_user_feedback(state: AgentState) -> str:
     else:
         return "generate_module"
 
+# def advance_module_node(state: AgentState) -> AgentState:
+#     """Advance to the next module or finish if all modules are done."""
+#     print("Advancing to next module...")
+#     if state["awaiting_approval"]:
+#         return state
+#     else:
+#         # If we are not awaiting approval, just advance
+#         return {
+#             **state,
+#             "module_index": state["module_index"] + 1,
+#             "awaiting_approval": False
+#         }
 
-
-    
 def advance_module_node(state: AgentState) -> AgentState:
     """Advance to the next module or finish if all modules are done."""
     print("Advancing to next module...")
-    if state["awaiting_approval"]:
-        return state
-    else:
-        # If we are not awaiting approval, just advance
-        return {
-            **state,
-            "module_index": state["module_index"] + 1,
-            "awaiting_approval": False
-        }
+    return {
+        **state,
+        "module_index": state["module_index"] + 1,
+        "awaiting_approval": False
+    }
 
+def is_course_finished(state: AgentState) -> str:
+    outline = json.loads(state["course_outline"])
+    modules = outline.get("modules", [])
+    index = state.get("module_index", 0)
+    return "finished" if index >= len(modules) else "human_feedback_course"
 
 
 graph = StateGraph(state_schema=AgentState)
@@ -455,8 +515,16 @@ graph.add_conditional_edges(
         "course_generation": "course_generation"
     }
 )
-graph.add_edge("human_feedback_outline", "course_generation")
-graph.add_edge("course_generation", "human_feedback_course")
+# graph.add_edge("human_feedback_outline", "course_generation")
+graph.add_conditional_edges(
+    "course_generation",
+    is_course_finished,
+    {
+        "finished": END,
+        "human_feedback_course": "human_feedback_course",
+    }
+)
+
 graph.add_conditional_edges(
     "human_feedback_course",
     check_user_feedback,
@@ -466,17 +534,11 @@ graph.add_conditional_edges(
         "check_user_feedback": "human_feedback_course",  # If unclear
     }
 )
+
 graph.add_conditional_edges(
     "advance_module",
-    lambda state: (
-        "course_generation"
-        if state["module_index"] <= len(json.loads(state["course_outline"])["modules"])
-        else END
-    ),
-    {
-        "course_generation": "course_generation",
-        END: END,
-    }
+    lambda state: "course_generation",  # always hand back to course_generation; it decides done vs not
+    {"course_generation": "course_generation"}
 )
 
 memory = SupabaseCheckpointSaver(SessionLocal)
@@ -487,9 +549,24 @@ memory.setup()
 agent = graph.compile(interrupt_before=["human_feedback_outline", "human_feedback_course"], checkpointer=memory)
 
 
-# mermaid_code = agent.get_graph().draw_mermaid()
-# Path("graph_diagram.mmd").write_text(mermaid_code)
-# print("✅ Mermaid graph saved to graph_diagram.mmd")
+graph = agent.get_graph()
+
+mermaid_text = graph.draw_mermaid()
+
+png_bytes = graph.draw_mermaid_png()
+
+# Create directory if needed
+Path("graphs").mkdir(exist_ok=True)
+
+# Save to file
+with open("graphs/langgraph_diagram.png", "wb") as f:
+    f.write(png_bytes)
+
+with open("graphs/langgraph_diagram.mmd", "w", encoding="utf-8") as f:
+    f.write(mermaid_text)
+
+print("PNG graph saved")
+print("Mermaid diagram saved to graphs/langgraph_diagram.mmd")
 
 if __name__ == "__main__":
     user_id = "user_" + str(uuid4())
@@ -521,7 +598,7 @@ if __name__ == "__main__":
 
     # Start graph
     state = agent.invoke(initial_state, config)
-    
+
     state_test = agent.get_state(config)
     pprint(state_test)
 
@@ -541,7 +618,7 @@ if __name__ == "__main__":
             "awaiting_approval": False
         })
         state = agent.invoke(None, config)
-    
+
     memory.delete_all()
 
     print("\n\n========== FINAL COURSE ==========\n\n")

@@ -11,14 +11,14 @@ from contextlib import contextmanager
 # PASSWORD = os.getenv("DATABASE_PASSWORD")
 # encoded_password = quote_plus(PASSWORD)
 
-SQLALCHEMY_DATABASE_URL = f'postgresql://{settings.supabase_database_username}:{quote_plus(settings.supabase_database_password)}@{settings.supabase_database_hostname}:{settings.supabase_database_port}/{settings.supabase_database_name}'
+SUPABASE_DATABASE_URL = f'postgresql://{settings.supabase_database_username}:{quote_plus(settings.supabase_database_password)}@{settings.supabase_database_hostname}:{settings.supabase_database_port}/{settings.supabase_database_name}'
 
-# print(SQLALCHEMY_DATABASE_URL)
+# print(SUPABASE_DATABASE_URL)
 
 # postgresql://postgres:[YOUR-PASSWORD]@db.lavarwuonkcywpzbthsc.supabase.co:5432/postgres
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    SUPABASE_DATABASE_URL,
     connect_args={"sslmode": "require"},
     pool_pre_ping=True
     )

@@ -112,7 +112,7 @@ class Module(BaseModel):
     title: str
     summary: str
     code_examples: str = ""
-    resources: Optional[Dict[str, str]] = Field(default_factory=list)       # External links or references
+    resources: Optional[Dict[str, str]] = Field(default_factory=dict)       # External links or references
     video_links: Optional[List[str]] = Field(default_factory=list)
     scraping_resources: Optional[Dict[str, str]] = Field(default_factory=dict)
 
@@ -135,7 +135,8 @@ class StartRequest(BaseModel):
 # --- Resume Paused Graph Run ---
 class ResumeRequest(BaseModel):
     thread_id: str
-    user_edit_request: str
+    review_action: Optional[Literal["approve", "reject"]] = None
+    user_edit_request: Optional[str] = None  # Only required if review_action is "reject"
 
 # --- Minimal API Response ---
 class GraphResponse(BaseModel):

@@ -25,9 +25,9 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     
     new_user.id = "user_"+str(uuid4())  # Generate a unique ID for the user
         
-    TRUSTED_ADMINS = os.getenv("TRUSTED_ADMIN_EMAILS", "").split(",")
+    trusted_admins = os.getenv("TRUSTED_ADMIN_EMAILS", "").split(",")
 
-    if user.email in TRUSTED_ADMINS:
+    if user.email in trusted_admins:
         new_user.role = RoleEnum.admin
     
     try:
