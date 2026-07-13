@@ -11,6 +11,7 @@ from ..schemas import StartRequest, GraphResponse, ResumeRequest, CourseResult
 import logging
 from ..supabase import get_db
 from sqlalchemy import text
+from ..rate_limit import limiter
 
 logger = logging.getLogger("tecolab_app")
 
@@ -84,10 +85,11 @@ def run_graph_and_response(input_state, config):
 #     )
 
 @router.post("/start", response_model=GraphResponse)
-def start_graph(request: StartRequest, current_user = Depends(oauth2.admin_only)):
+@limiter.limit("5/hour")
+def start_graph(request:Request, request_body: StartRequest, current_user = Depends(oauth2.admin_only)):
     thread_id = "thread_"+str(uuid4())
     course_id = "course_"+str(uuid4())
-    if not request.human_request:
+    if not request_body.human_request:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Human request is required to start the graph."
@@ -97,7 +99,7 @@ def start_graph(request: StartRequest, current_user = Depends(oauth2.admin_only)
     initial_state = {
         "user_id": current_user.id,
         "course_id": course_id,
-        "messages": request.human_request,
+        "messages": request_body.human_request,
         "course_outline": "",
         "current_outline": None,
         "user_edit_request": None,
@@ -106,7 +108,7 @@ def start_graph(request: StartRequest, current_user = Depends(oauth2.admin_only)
         "awaiting_approval": False,
         "course": ""
     }
-    logger.debug(f"Initial state: user_id={current_user.id}, course_id={course_id}, messages_preview={request.human_request[:100]}")
+    logger.debug(f"Initial state: user_id={current_user.id}, course_id={course_id}, messages_preview={request_body.human_request[:100]}")
     return run_graph_and_response(initial_state, config)
 
 # @router.post("/resume", response_model=GraphResponse)
@@ -138,17 +140,18 @@ def start_graph(request: StartRequest, current_user = Depends(oauth2.admin_only)
 
 
 @router.post("/resume", response_model=GraphResponse)
-def resume_graph(request: ResumeRequest, current_user = Depends(oauth2.admin_only)):
-    if not request.thread_id:
+@limiter.limit("30/hour")
+def resume_graph(request:Request, request_body: ResumeRequest, current_user = Depends(oauth2.admin_only)):
+    if not request_body.thread_id:
         raise HTTPException(status_code=404, detail="Thread ID is required to resume the graph.")
 
-    config = {"configurable": {"thread_id": request.thread_id}}
+    config = {"configurable": {"thread_id": request_body.thread_id}}
     state = {
-        "user_edit_request": request.user_edit_request,
-        "review_action": request.review_action,  # pass it through
+        "user_edit_request": request_body.user_edit_request,
+        "review_action": request_body.review_action,  # pass it through
     }  # drop "status" unless AgentState actually has it
 
-    if request.user_edit_request is None:
+    if request_body.user_edit_request is None:
         raise HTTPException(status_code=400, detail="Invalid request. Use 'accept' or 'reject' with comments.")
 
     try:
@@ -157,6 +160,7 @@ def resume_graph(request: ResumeRequest, current_user = Depends(oauth2.admin_onl
         raise HTTPException(status_code=500, detail=f"update_state failed: {str(e)}")
 
     return run_graph_and_response(None, config)
+
 @router.get("/status/{thread_id}", response_model=GraphResponse)
 def get_graph_status(thread_id: str, current_user=Depends(oauth2.admin_only)):
     logger.info(f"[STATUS] Checking status for thread_id={thread_id} by user_id={current_user.id}")

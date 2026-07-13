@@ -9,6 +9,9 @@ import logging
 import sys
 import json
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+from .rate_limit import limiter
 
 # models.Base.metadata.create_all(bind=engine) ##not required anymore as we have alembic now
 # makes sure that the database tables are created based on the models defined in the app will comment out later when I implement alembic for migrations
@@ -66,6 +69,9 @@ class JSONLoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 app = FastAPI()
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
