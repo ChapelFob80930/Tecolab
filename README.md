@@ -255,13 +255,18 @@ Note: the admin allowlist is read via `os.getenv("TRUSTED_ADMIN_EMAILS", ...)` r
 
 ---
 
-## Known Limitations
+## Known Limitations & Things to Keep in Mind
 
-These are real, current rough edges — not defects blocking basic use, but worth knowing before you extend this or hand it to someone else:
+While the platform is fully functional, there are a few behaviors worth being aware of:
 
-- **Outline edits can silently no-op.** If your edit request references a module or section that doesn't exist in the current outline (e.g. "add a module before the DP section" when there's no DP module), the agent may execute only the resolvable part of the instruction (or none of it) without any error or warning. Always double-check the returned outline against what you asked for.
-- **Module edits assume strictly sequential, in-order review.** The edit branch replaces the *last* entry in the generated-modules list under the assumption that you're always editing the module you just generated. Jumping back to edit an earlier, already-approved module out of order isn't a supported flow and isn't validated against.
-- **No rate limiting** on `/start` or `/resume` — each call invokes at least one LLM request; nothing currently throttles repeated calls per user.
-- **Two databases, two Alembic environments** (Neon for users/auth, Supabase for agent checkpoints/memory) is a real architectural split, not an accident — but it means schema changes need to be applied to the correct environment (`alembic.ini` vs `alembic_supabase.ini`), and autogenerate against the wrong `target_metadata` can misidentify tables owned by the other database as "orphaned" and attempt to drop them. Always read a generated migration before running `upgrade head`.
-- **`GraphResponse.course_id` is populated on every response**, not just the final one — this is intentional (lets you capture it early and poll), but don't assume its presence alone means the course is finished; always check `run_status`.
-- **`/course_agent/result/{course_id}` requires exact ownership match** on `user_id` — if you test with multiple accounts, remember results are per-user and won't cross over, by design.
+- **Outline edits may not always apply exactly as requested.** If an edit refers to a module or section that doesn't exist in the current outline (for example, asking to insert content before a section that isn't present), the system may only apply the parts it can resolve. In some cases, no changes may be made and no error message will be shown. It's a good idea to review the updated outline after making edits to confirm the requested changes were applied.
+
+- **Module editing is designed to follow the generation flow.** Editing works best for the most recently generated module. Revisiting and modifying older modules after moving ahead in the course creation process is not currently supported and may produce unexpected results.
+
+- **No request throttling is currently in place.** Starting or resuming course generation triggers AI processing each time. Repeatedly sending start or resume requests in quick succession may result in unnecessary processing and increased resource usage.
+
+- **The system uses two separate databases.** User accounts and authentication data are stored separately from course generation memory and agent state. If you're making database or schema changes, ensure they are applied to the correct environment. Migration files should always be reviewed before being executed.
+
+- **A Course ID is assigned and returned throughout the generation process.** The presence of a Course ID does not indicate that course generation is complete. Always check the current run status to determine whether generation is still in progress or has finished.
+
+- **Course results are tied to the account that created them.** A course can only be viewed by the user who generated it. If you're testing with multiple accounts, results will not be shared across users.
