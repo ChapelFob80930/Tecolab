@@ -549,80 +549,80 @@ memory.setup()
 agent = graph.compile(interrupt_before=["human_feedback_outline", "human_feedback_course"], checkpointer=memory)
 
 
-graph = agent.get_graph()
+# graph = agent.get_graph()
+#
+# mermaid_text = graph.draw_mermaid()
+#
+# png_bytes = graph.draw_mermaid_png()
+#
+# # Create directory if needed
+# Path("graphs").mkdir(exist_ok=True)
+#
+# # Save to file
+# with open("graphs/langgraph_diagram.png", "wb") as f:
+#     f.write(png_bytes)
+#
+# with open("graphs/langgraph_diagram.mmd", "w", encoding="utf-8") as f:
+#     f.write(mermaid_text)
+#
+# print("PNG graph saved")
+# print("Mermaid diagram saved to graphs/langgraph_diagram.mmd")
 
-mermaid_text = graph.draw_mermaid()
-
-png_bytes = graph.draw_mermaid_png()
-
-# Create directory if needed
-Path("graphs").mkdir(exist_ok=True)
-
-# Save to file
-with open("graphs/langgraph_diagram.png", "wb") as f:
-    f.write(png_bytes)
-
-with open("graphs/langgraph_diagram.mmd", "w", encoding="utf-8") as f:
-    f.write(mermaid_text)
-
-print("PNG graph saved")
-print("Mermaid diagram saved to graphs/langgraph_diagram.mmd")
-
-if __name__ == "__main__":
-    user_id = "user_" + str(uuid4())
-    course_id = "course_" + str(uuid4())
-    print(f"User ID: {user_id}, Course ID: {course_id}")
-
-    user_message = HumanMessage(content="""
-    Create a course on DSA for interviews for beginner developers.
-    Target audience: Developers who want to learn Data Structures and Algorithms for interviews 
-    Estimated duration: 4 weeks  
-    Include code examples: Yes  
-    Custom URLs: ["https://takeuforward.org/strivers-a2z-dsa-course/strivers-a2z-dsa-course-sheet-2/"]
-    """)
-
-    initial_state = {
-        "user_id": user_id,
-        "course_id": course_id,
-        "messages": [user_message],
-        "course_outline": "",
-        "current_outline": None,
-        "user_edit_request": None,
-        "module_index": 0,
-        "generated_modules": [],
-        "awaiting_approval": False,
-        "course": ""
-    }
-
-    config = {"configurable": {"thread_id": "1"}}
-
-    # Start graph
-    state = agent.invoke(initial_state, config)
-
-    state_test = agent.get_state(config)
-    pprint(state_test)
-
-    # Approve outline
-    print("Awaiting User feedback on outline")
-    agent.update_state(config, {
-        "user_edit_request": "Looks great! Please proceed.",
-        "awaiting_approval": False
-    })
-    state = agent.invoke(None, config)
-
-    # Approve each module
-    while state["awaiting_approval"]:
-        print("Awaiting user feedback on module")
-        agent.update_state(config, {
-            "user_edit_request": "Approved. Continue.",
-            "awaiting_approval": False
-        })
-        state = agent.invoke(None, config)
-
-    memory.delete_all()
-
-    print("\n\n========== FINAL COURSE ==========\n\n")
-    print(state["course"])
+# if __name__ == "__main__":
+#     user_id = "user_" + str(uuid4())
+#     course_id = "course_" + str(uuid4())
+#     print(f"User ID: {user_id}, Course ID: {course_id}")
+#
+#     user_message = HumanMessage(content="""
+#     Create a course on DSA for interviews for beginner developers.
+#     Target audience: Developers who want to learn Data Structures and Algorithms for interviews
+#     Estimated duration: 4 weeks
+#     Include code examples: Yes
+#     Custom URLs: ["https://takeuforward.org/strivers-a2z-dsa-course/strivers-a2z-dsa-course-sheet-2/"]
+#     """)
+#
+#     initial_state = {
+#         "user_id": user_id,
+#         "course_id": course_id,
+#         "messages": [user_message],
+#         "course_outline": "",
+#         "current_outline": None,
+#         "user_edit_request": None,
+#         "module_index": 0,
+#         "generated_modules": [],
+#         "awaiting_approval": False,
+#         "course": ""
+#     }
+#
+#     config = {"configurable": {"thread_id": "1"}}
+#
+#     # Start graph
+#     state = agent.invoke(initial_state, config)
+#
+#     state_test = agent.get_state(config)
+#     pprint(state_test)
+#
+#     # Approve outline
+#     print("Awaiting User feedback on outline")
+#     agent.update_state(config, {
+#         "user_edit_request": "Looks great! Please proceed.",
+#         "awaiting_approval": False
+#     })
+#     state = agent.invoke(None, config)
+#
+#     # Approve each module
+#     while state["awaiting_approval"]:
+#         print("Awaiting user feedback on module")
+#         agent.update_state(config, {
+#             "user_edit_request": "Approved. Continue.",
+#             "awaiting_approval": False
+#         })
+#         state = agent.invoke(None, config)
+#
+#     memory.delete_all()
+#
+#     print("\n\n========== FINAL COURSE ==========\n\n")
+#     print(state["course"])
 
 
 

@@ -7,8 +7,10 @@ import json
 from ..config import settings
 from ..agent2 import agent
 from langchain_core.messages import AIMessage
-from ..schemas import StartRequest, GraphResponse, ResumeRequest
+from ..schemas import StartRequest, GraphResponse, ResumeRequest, CourseResult
 import logging
+from ..supabase import get_db
+from sqlalchemy import text
 
 logger = logging.getLogger("tecolab_app")
 
@@ -43,6 +45,7 @@ def run_graph_and_response(input_state, config):
         run_status = "finished"
 
     assistant_response = get_last_ai_message(state.values)
+    course_id = state.values.get("course_id")
 
     logger.info(f"[GRAPH] run completed | thread_id={thread_id}, run_status={run_status}")
 
@@ -50,6 +53,7 @@ def run_graph_and_response(input_state, config):
         thread_id=thread_id,
         run_status=run_status,
         assistant_response=assistant_response,
+        course_id=course_id
     )
 
 # def run_graph_and_response(input_state, config):
@@ -172,3 +176,29 @@ def get_graph_status(thread_id: str, current_user=Depends(oauth2.admin_only)):
     logger.info(f"[STATUS] thread_id={thread_id}, run_status={run_status}")
     return GraphResponse(thread_id=thread_id, run_status=run_status)
 
+@router.get("/result/{course_id}", response_model=CourseResult)
+def get_course_result(course_id: str, current_user=Depends(oauth2.admin_only), db: Session = Depends(get_db)):
+    logger.info(f"[RESULT] Fetching course result for course_id={course_id} by user_id={current_user.id}")
+
+    row = db.execute(
+        text("""
+             SELECT user_id, course_id, final_course, final_course_outline
+             FROM agent_memory
+             WHERE course_id = :course_id
+               AND user_id = :user_id
+             """),
+        {"course_id": course_id, "user_id": current_user.id}
+    ).fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No completed course found for course_id: {course_id}"
+        )
+
+    return CourseResult(
+        user_id=row.user_id,
+        course_id=row.course_id,
+        final_course=row.final_course,
+        final_course_outline=row.final_course_outline,
+    )

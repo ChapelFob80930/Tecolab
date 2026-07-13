@@ -142,4 +142,11 @@ class ResumeRequest(BaseModel):
 class GraphResponse(BaseModel):
     thread_id: str
     run_status: Literal["finished", "user_feedback"]
-    assistant_response: Optional[str] = None    
+    assistant_response: Optional[str] = None
+    course_id: Optional[str] = None
+
+class CourseResult(BaseModel):
+    user_id: str
+    course_id: str
+    final_course: str
+    final_course_outline: str
