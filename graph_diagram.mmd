@@ -1,0 +1,27 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	course_outline_generation(course_outline_generation)
+	course_generation(course_generation)
+	advance_module(advance_module)
+	human_feedback_outline(human_feedback_outline<hr/><small><em>__interrupt = before</em></small>)
+	human_feedback_course(human_feedback_course<hr/><small><em>__interrupt = before</em></small>)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> course_outline_generation;
+	advance_module -.-> __end__;
+	advance_module -.-> course_generation;
+	course_generation --> human_feedback_course;
+	course_outline_generation --> human_feedback_outline;
+	human_feedback_course -. &nbsp;generate_module&nbsp; .-> advance_module;
+	human_feedback_course -. &nbsp;edit_module&nbsp; .-> course_generation;
+	human_feedback_outline --> course_generation;
+	human_feedback_outline -. &nbsp;edit_course_outline&nbsp; .-> course_outline_generation;
+	human_feedback_course -.-> __end__;
+	human_feedback_course -. &nbsp;check_user_feedback&nbsp; .-> human_feedback_course;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

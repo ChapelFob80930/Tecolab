@@ -1,0 +1,29 @@
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_hostname: str 
+    database_port: str
+    database_password: str
+    database_name: str
+    database_username: str
+    secret_key: str
+    algorithm: str
+    access_token_expire_minutes: int
+    pinecone_api_key: str
+    pinecone_dense_index_host: str
+    index_name: str
+    namespace_name: str
+    openai_api_key:str
+    trusted_admin_emails:str
+    supabase_database_username: str
+    supabase_database_password: str
+    supabase_database_hostname: str
+    supabase_database_port: str
+    supabase_database_name: str
+    # supabase_api_key: str
+    
+    class Config:
+        env_file = ".env"
+        
+#note for me, dont forget to instantiate the Settings class to use it  
+settings = Settings()
