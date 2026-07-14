@@ -2,8 +2,6 @@
 
 A LangGraph-based, human-in-the-loop agent that generates a full multi-module course from a single natural-language request. The agent produces a course outline, pauses for your approval or edits, then generates each module one at a time — pausing after every module so you can approve, request changes, or move on — and finally assembles and persists the completed course.
 
-Branch: `backend_agent_maybe_final`
-
 ---
 
 ## How it works
