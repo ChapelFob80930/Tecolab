@@ -20,6 +20,60 @@ State persists across all of this via a custom Postgres-backed LangGraph checkpo
 
 ---
 
+## Accessing the Live API
+
+The Tecolab Course Generation Agent API is currently deployed and publicly accessible.
+
+### Base API URL
+
+Base URL:
+```
+http://65.1.86.70/
+```
+
+Swagger Documentation:
+```
+http://65.1.86.70/docs
+```
+
+> Note: The demo deployment currently runs over HTTP rather than HTTPS. Some browsers may display a security warning or mark the connection as "Not Secure" when accessing the API directly.
+
+
+### Interactive API Documentation (Swagger UI)
+
+To explore and test the API directly from your browser, visit:
+
+The Swagger UI is available at the documentation URL above and provides:
+
+- Complete endpoint documentation
+- Request and response schemas
+- Interactive API testing
+- Authentication support through the built-in Authorize button
+
+### Demo Admin Credentials
+
+For demo and testing purposes, you can authenticate directly through Swagger UI:
+
+1. Open:
+   ```
+   http://65.1.86.70/docs
+   ```
+
+2. Click the **Authorize** button in the top-right corner.
+
+3. Log in using:
+
+   ```
+   Username: admin@gmail.com
+   Password: admin
+   ```
+
+4. Once authorized, you can execute requests against any protected endpoint directly from the documentation interface.
+
+> The above credentials are for a pre-created demo administrator account on the hosted deployment. If you are running the project locally, create your own administrator account using the registration and login flow described later in this document.
+
+---
+
 ## API Endpoints
 
 All endpoints require a valid admin JWT (`Authorization: Bearer <token>`).
@@ -210,6 +264,23 @@ Two Supabase-side tables are required beyond what your standard app migrations c
 ---
 
 ## Getting a JWT for testing
+
+### Quick Testing via Swagger UI
+
+If you simply want to test the API, the fastest option is to use the interactive Swagger documentation:
+
+```
+http://65.1.86.70/docs
+```
+
+Click **Authorize** and use:
+
+```
+Username: admin@gmail.com
+Password: admin
+```
+
+The sections below describe the complete registration and JWT authentication flow used by the application.
 
 All `/course_agent/*` endpoints require an admin-authenticated JWT (checked via `oauth2.admin_only`, based on the user's `role`).
 
