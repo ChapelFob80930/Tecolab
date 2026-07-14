@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from .. import database, schemas, models, utils, oauth2
 from ..vector_database import get_vector_db, namespace_name, index_name
 from typing import List
-from sentence_transformers import CrossEncoder
+# from sentence_transformers import CrossEncoder
 import ast
 import json
 from ..config import settings

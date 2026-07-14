@@ -44,7 +44,7 @@ from .supabase_models import AgentMemory
 from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import text
 from typing import List
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 from typing import Literal
 from langgraph.types import interrupt, Command
