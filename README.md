@@ -2,6 +2,24 @@
 
 A LangGraph-based, human-in-the-loop agent that generates a full multi-module course from a single natural-language request. The agent produces a course outline, pauses for your approval or edits, then generates each module one at a time — pausing after every module so you can approve, request changes, or move on — and finally assembles and persists the completed course.
 
+**Live demo:** `http://65.1.86.70/` · **Swagger UI:** `http://65.1.86.70/docs` — see [Accessing the Live API](#accessing-the-live-api) for demo credentials.
+
+---
+
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Deployment & infrastructure](#deployment--infrastructure)
+- [Accessing the live API](#accessing-the-live-api)
+- [API endpoints](#api-endpoints)
+- [Full demo walkthrough](#full-demo-walkthrough)
+- [Running locally](#running-locally)
+- [Environment variables](#environment-variables)
+- [Database setup](#database-setup)
+- [Getting a JWT for testing](#getting-a-jwt-for-testing)
+- [Known limitations & things to keep in mind](#known-limitations--things-to-keep-in-mind)
+
 ---
 
 ## How it works
@@ -14,7 +32,45 @@ The agent is a LangGraph `StateGraph` with two human-in-the-loop interrupt point
 4. **Module review** — for each module, you approve (moves to the next module) or reject with feedback (the agent revises *that specific module's generated content*, not the outline stub, and pauses again).
 5. **Completion** — once every module has been approved, the agent joins all module content into the final course, persists it (and its embeddings) to the database, and returns a completion signal along with a `course_id` you can use to fetch the finished course.
 
-State persists across all of this via a custom Postgres-backed LangGraph checkpointer, so you can start a course, come back later, and resume exactly where you left off using the `thread_id`.
+State persists across all of this via a custom Postgres-backed LangGraph checkpointer (`SupabaseCheckpointSaver`), so you can start a course, come back later, and resume exactly where you left off using the `thread_id`.
+
+---
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| Agent orchestration | LangGraph (5-node graph, 2 human-in-the-loop interrupt points), LangChain |
+| Prompt engineering | `ChatPromptTemplate` + Pydantic schema enforcement, LLM-based intent routing, structured output parsing |
+| LLM / embeddings | OpenAI (`gpt-4o-mini` for agent logic, `gpt-4.1-mini` for content generation, `OpenAIEmbeddings`) |
+| Vector search | Pinecone (project recommendations, hosted reranker), Supabase `pgvector` (agent memory, raw SQL cosine distance) |
+| API | FastAPI, role-based access control (`oauth2.admin_only`), `slowapi` rate limiting |
+| State persistence | Custom `SupabaseCheckpointSaver` (extends LangGraph's `BaseCheckpointSaver`, full async coverage) + `agent_memory` JSONB storage |
+| Databases | Neon (Postgres — users/auth), Supabase (Postgres + `pgvector` — checkpoints & agent memory) |
+| Migrations | Alembic (separate environments for Neon and Supabase) |
+| Deployment | Docker (single container), AWS EC2 (t3.micro, free tier), nginx (reverse proxy) |
+
+---
+
+## Deployment & infrastructure
+
+The API is deployed on AWS EC2, containerized with Docker, and served through nginx.
+
+```
+Internet
+  → nginx (port 80, on EC2 host)
+    → Docker container (127.0.0.1:8000, not publicly exposed)
+      → FastAPI app (uvicorn, gunicorn-free single-process)
+```
+
+**Key infrastructure decisions, and why:**
+
+- **Single-container Docker deployment**, not bare venv+systemd — chosen for portability and because it's the more broadly expected pattern for this class of role, while deliberately scoped down (no Compose, no orchestration) to stay defensible and maintainable at this project's actual scale.
+- **Trimmed dependency set for deployment.** The EC2 instance runs on a free-tier `t3.micro` (1GB RAM). `requirements-deploy.txt` is a pruned copy of `requirements.txt` with unused heavy packages removed (`torch`, `sentence-transformers`, `transformers` — imported in earlier iterations but never actually instantiated once Pinecone's hosted reranker replaced local cross-encoding; confirmed dead via usage audit before removal). Local development still uses the full `requirements.txt`.
+- **Secrets are never baked into the image.** `.env` is excluded via `.dockerignore` and injected at container-start time via `docker run --env-file .env`, so credentials aren't recoverable from the image layers themselves.
+- **nginx reverse proxy** — the app is bound to `127.0.0.1:8000` inside the EC2 host, not `0.0.0.0`, so it's unreachable except through nginx on port 80. No application port is directly exposed to the internet.
+- **Auto-restart on crash or reboot** via Docker's `--restart unless-stopped` policy — verified by rebooting the instance and confirming the container recovers without manual intervention.
+- **HTTPS:** not currently enabled. The demo runs over plain HTTP on a raw IP (no domain attached yet); adding TLS via Let's Encrypt/certbot is a fast follow-up once a domain is pointed at the instance, not a structural limitation of the setup.
 
 ---
 
@@ -36,12 +92,9 @@ http://65.1.86.70/docs
 
 > Note: The demo deployment currently runs over HTTP rather than HTTPS. Some browsers may display a security warning or mark the connection as "Not Secure" when accessing the API directly.
 
-
 ### Interactive API Documentation (Swagger UI)
 
-To explore and test the API directly from your browser, visit:
-
-The Swagger UI is available at the documentation URL above and provides:
+To explore and test the API directly from your browser, visit the documentation URL above. Swagger UI provides:
 
 - Complete endpoint documentation
 - Request and response schemas
@@ -52,23 +105,16 @@ The Swagger UI is available at the documentation URL above and provides:
 
 For demo and testing purposes, you can authenticate directly through Swagger UI:
 
-1. Open:
-   ```
-   http://65.1.86.70/docs
-   ```
-
+1. Open `http://65.1.86.70/docs`
 2. Click the **Authorize** button in the top-right corner.
-
 3. Log in using:
-
    ```
    Username: admin@gmail.com
-   Password: admin
+   Password: admin123
    ```
-
 4. Once authorized, you can execute requests against any protected endpoint directly from the documentation interface.
 
-> The above credentials are for a pre-created demo administrator account on the hosted deployment. If you are running the project locally, create your own administrator account using the registration and login flow described later in this document.
+> The above credentials are for a pre-created demo administrator account on the hosted deployment, scoped to demo data only. If you are running the project locally, create your own administrator account using the registration and login flow described in [Getting a JWT for testing](#getting-a-jwt-for-testing).
 
 ---
 
@@ -203,6 +249,39 @@ A complete run against a fresh course looks like this:
 
 ---
 
+## Running locally
+
+```bash
+git clone <this-repo-url>
+cd Tecolab
+
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+pip install -r requirements.txt   # full dependency set — use this, not requirements-deploy.txt, for local dev
+```
+
+Create a `.env` file in the project root — see [Environment Variables](#environment-variables) for the full list of required keys.
+
+Run migrations against **both** databases (see [Database setup](#database-setup) for details):
+
+```bash
+alembic upgrade head                       # Neon — users/auth/projects
+alembic -c alembic_supabase.ini upgrade head  # Supabase — agent_memory (checkpoints/checkpoint_writes are created automatically on startup)
+```
+
+Start the API:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Visit `http://localhost:8000/docs` for the interactive Swagger UI, and follow [Getting a JWT for testing](#getting-a-jwt-for-testing) to create your own admin account (no pre-seeded demo credentials exist locally — those only exist on the hosted deployment).
+
+> **Note on `requirements-deploy.txt`:** this file is a pruned copy of `requirements.txt` used only in the production Docker image (see [Deployment & infrastructure](#deployment--infrastructure)) — it drops a few heavy packages that are imported but unused in the current codebase (`torch`, `sentence-transformers`, `transformers`) to fit the deployment's memory constraints. Local development should always use the full `requirements.txt`.
+
+---
+
 ## Environment Variables
 
 Create a `.env` file in the project root with the following:
@@ -242,6 +321,7 @@ supabase_database_name=
 - `trusted_admin_emails` should be set to `admin@gmail.com` for local/demo testing — only emails in this list can access the `/course_agent/*` endpoints (all gated behind `oauth2.admin_only`).
 - The project uses **two separate Postgres databases**: Neon (`database_*` variables) for users/auth/projects, and Supabase (`supabase_database_*` variables) for LangGraph checkpoints and `agent_memory`. Each has its own Alembic migration environment (`alembic_migrations/` for Neon, `alembic_migrations_supabase/` for Supabase) — don't run migrations against the wrong one.
 - If your database password contains special characters (`@`, `%`, etc.), make sure they're handled correctly wherever the connection string is built — unescaped `%` characters will break Alembic's `configparser`-based config loading.
+- In production, `.env` is never committed and never baked into the Docker image — see [Deployment & infrastructure](#deployment--infrastructure) for how secrets are injected at runtime instead.
 
 ---
 
@@ -275,7 +355,7 @@ Click **Authorize** and use:
 
 ```
 Username: admin@gmail.com
-Password: admin
+Password: admin123
 ```
 
 The sections below describe the complete registration and JWT authentication flow used by the application.
@@ -339,3 +419,5 @@ While the platform is fully functional, there are a few behaviors worth being aw
 - **A Course ID is assigned and returned throughout the generation process.** The presence of a Course ID does not indicate that course generation is complete. Always check the current run status to determine whether generation is still in progress or has finished.
 
 - **Course results are tied to the account that created them.** A course can only be viewed by the user who generated it. If you're testing with multiple accounts, results will not be shared across users.
+
+- **The hosted demo runs on a single free-tier instance with no autoscaling.** It's suitable for demo/portfolio evaluation traffic, not production load — worth knowing if you're stress-testing it.
