@@ -32,6 +32,11 @@ The agent is a LangGraph `StateGraph` with two human-in-the-loop interrupt point
 4. **Module review** — for each module, you approve (moves to the next module) or reject with feedback (the agent revises *that specific module's generated content*, not the outline stub, and pauses again).
 5. **Completion** — once every module has been approved, the agent joins all module content into the final course, persists it (and its embeddings) to the database, and returns a completion signal along with a `course_id` you can use to fetch the finished course.
 
+![Tecolab agent graph](graphs/langgraph_diagram.png)
+
+*5-node LangGraph state machine, with human-in-the-loop interrupts before outline generation and before each module's generation.*
+
+
 State persists across all of this via a custom Postgres-backed LangGraph checkpointer (`SupabaseCheckpointSaver`), so you can start a course, come back later, and resume exactly where you left off using the `thread_id`.
 
 ---
