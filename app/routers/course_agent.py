@@ -175,7 +175,7 @@ def get_graph_status(thread_id: str, current_user=Depends(oauth2.admin_only)):
         )
 
     next_nodes = state.next
-    run_status = "user_feedback" if next_nodes and "human_feedback" in next_nodes else "finished"
+    run_status = "user_feedback" if next_nodes and any(n.startswith("human_feedback") for n in next_nodes) else "finished"
     
     logger.info(f"[STATUS] thread_id={thread_id}, run_status={run_status}")
     return GraphResponse(thread_id=thread_id, run_status=run_status)
