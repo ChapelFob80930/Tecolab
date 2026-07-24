@@ -1,15 +1,12 @@
-from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from .. import supabase, schemas, supabase_models, utils, oauth2
+from .. import oauth2
 from uuid import uuid4
-import json
-from ..config import settings
-from ..agent2 import agent
+from app.services.agent2 import agent
 from langchain_core.messages import AIMessage
 from ..schemas import StartRequest, GraphResponse, ResumeRequest, CourseResult
 import logging
-from ..supabase import get_db
+from app.repository.supabase import get_db
 from sqlalchemy import text
 from ..rate_limit import limiter
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 # from dotenv import load_dotenv
 import os
 from urllib.parse import quote_plus
-from .config import settings
+from app.config import settings
 
 # load_dotenv()
 # PASSWORD = os.getenv("DATABASE_PASSWORD")

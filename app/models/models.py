@@ -1,12 +1,9 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, UUID, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from .database import Base
+from sqlalchemy import Column, String, Boolean
+from app.repository.database import Base
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 from sqlalchemy.sql.expression import text
 from sqlalchemy import Enum as SqlEnum
 import enum
-import uuid
 
 
 class RoleEnum(str, enum.Enum):

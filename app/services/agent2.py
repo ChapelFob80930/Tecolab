@@ -1,58 +1,31 @@
-from pprint import pprint
-from typing import Annotated, Sequence, List, Literal, Optional
+from typing import Annotated, Sequence, Optional
 from typing_extensions import TypedDict
 from dotenv import load_dotenv
-import os
 import json
-from uuid import uuid4
-from pathlib import Path
 # from .config import settings  ##NOTE: Will uncomment this once API is setup, now using load_dotenv to load environment variables as using this import causes ImportError: attempted relative import with no known parent package but works when called from the main file
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import (
     BaseMessage,
-    ToolMessage,
-    SystemMessage,
     HumanMessage,
-    get_buffer_string,
     AIMessage
 )
-from langchain_core.tools import tool
 from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from langchain_core.runnables import RunnableConfig, RunnableLambda
-from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
-from langchain_core.vectorstores import InMemoryVectorStore
-from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import ToolNode
-from langchain_openai.embeddings import OpenAIEmbeddings
-from langchain_tavily import TavilySearch
 # from .course_outline_generation import generate_course_outline ##Note: Same as above, will uncomment once API is setup
-from .course_outline_generation import generate_course_outline
-from .schemas import CourseOutline, CoursePrompt
-import tiktoken
-from langchain_core.runnables import RunnableConfig
-import uuid
+from app.schemas import CourseOutline, CoursePrompt
 from .course_outline_generation import parse_user_input_for_course_outline, generate_course_outline
 from .course_generation import generate_module_content
-from pathlib import Path
 # from vector_database import get_vector_db
-from .supabase import get_db, session_scope
-from .supabase_models import AgentMemory
+from app.repository.supabase import session_scope
 from langchain_openai import OpenAIEmbeddings
 from sqlalchemy import text
 from typing import List
 # from sentence_transformers import SentenceTransformer
-from sqlalchemy.orm import Session
-from typing import Literal
-from langgraph.types import interrupt, Command
-from langgraph.checkpoint.memory import MemorySaver
-import operator
 # from langchain_ollama.llms import OllamaLLM
 # from langchain_ollama import OllamaEmbeddings
-from .supabase import SessionLocal
+from app.repository.supabase import SessionLocal
 from .checkpoint import SupabaseCheckpointSaver
 
 

@@ -1,15 +1,8 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, UUID, func
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
-from .supabase import Base #NOTE: Change to .supabase later
+from sqlalchemy import Integer, String, Text, func
+from app.repository.supabase import Base #NOTE: Change to .supabase later
 from sqlalchemy.sql.sqltypes import TIMESTAMP
-from sqlalchemy.sql.expression import text
-from sqlalchemy import Enum as SqlEnum
-import enum
-import uuid
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy import Column, DateTime, ForeignKey
+from sqlalchemy import Column
 
 from sqlalchemy import UniqueConstraint
 

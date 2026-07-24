@@ -1,13 +1,13 @@
 ##NOTE: This code is part of a larger application and is designed to generate detailed educational content for a course module based on a provided outline. It uses the LangChain library to interact with an LLM (Language Model) and generate structured content. And it is just for testing purposes. Might use as a separate module in the future.
 
-from .schemas import CourseOutline, CoursePrompt
+from app.schemas import CourseOutline, CoursePrompt
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage 
 import os
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from .config import settings
+from app.config import settings
 
 load_dotenv()
 

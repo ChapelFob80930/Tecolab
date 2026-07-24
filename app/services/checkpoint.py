@@ -1,12 +1,9 @@
-import psycopg2
-from psycopg2 import sql
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver, CheckpointTuple
 from typing import Any, Optional, Iterator, AsyncIterator, Sequence
-from datetime import datetime, timezone
 from contextlib import contextmanager
 from sqlalchemy import text
-from .supabase import SessionLocal
+from app.repository.supabase import SessionLocal
 
 
 class SupabaseCheckpointSaver(BaseCheckpointSaver):

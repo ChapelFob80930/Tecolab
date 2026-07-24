@@ -1,10 +1,7 @@
 from fastapi import FastAPI, Request
 import time
 from .routers import auth, users, projects, search, course_agent
-from .config import settings
 from fastapi.middleware.cors import CORSMiddleware
-from .database import engine
-from . import models
 import logging
 import sys
 import json

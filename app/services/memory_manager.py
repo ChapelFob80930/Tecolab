@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2 import sql
 from contextlib import contextmanager
-from supabase import SessionLocal
+from repository.supabase import SessionLocal
 from sqlalchemy import text
 
 class MemoryManager:

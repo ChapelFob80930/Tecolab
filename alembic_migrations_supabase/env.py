@@ -6,8 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 from app.config import settings
 
-from app.supabase import Base
-from app import supabase_models
+from app.repository.supabase import Base
 from urllib.parse import quote_plus
 
 # this is the Alembic Config object, which provides

@@ -1,10 +1,7 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from .. import database, schemas, models, utils, oauth2
-from ..vector_database import get_vector_db, index_name, namespace_name
+from fastapi import APIRouter, Depends, status
+from .. import schemas
+from ..vector_database import get_vector_db, namespace_name
 from uuid import uuid4
-import json
 from ..config import settings
 
 router = APIRouter(prefix = "/projects", tags = ['manage-show-projects-vectorDB'])

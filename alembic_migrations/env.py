@@ -4,7 +4,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
-from app.models import Base
+from app.models.models import Base
 from app.config import settings
 from urllib.parse import quote_plus
 

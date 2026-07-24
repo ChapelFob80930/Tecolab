@@ -1,10 +1,11 @@
 import os
 from uuid import uuid4
-from .. import schemas,models, utils
-from fastapi import FastAPI, Response, status, HTTPException, Depends, APIRouter
+from .. import schemas, utils
+from ..models import models
+from fastapi import status, HTTPException, Depends, APIRouter
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models import RoleEnum
+from app.repository.database import get_db
+from app.models.models import RoleEnum
 
 router = APIRouter( prefix = "/users", tags = ['Users']) #prefix for all routes in this router will be /users
 
