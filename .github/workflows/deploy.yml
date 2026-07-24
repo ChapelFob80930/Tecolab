@@ -9,7 +9,22 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
-      - name: Deploy
+      - name: Pull latest code
         run: |
-          echo "connected"
+          cd ~/Tecolab
+          git pull
+
+      - name: Rebuild and restart container
+        run: |
+          cd ~/Tecolab
+          docker stop tecolab-container || true
+          docker rm tecolab-container || true
+          docker build -t tecolab-app .
+          docker run -d --name tecolab-container --env-file .env -p 8000:8000 --restart unless-stopped tecolab-app
+
+      - name: Verify container started
+        run: |
+          sleep 5
+          docker logs tecolab-container --tail 50
+      
 
