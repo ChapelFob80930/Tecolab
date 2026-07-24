@@ -31,10 +31,10 @@ def run_graph_and_response(input_state, config):
         logger.debug(f"Invoking agent with input_state={input_state}, config={config}")
         agent.invoke(input_state, config)
         state = agent.get_state(config)
-	#logger.info(f"NEXT = {state.next}")
-	#logger.info(f"TASKS = {getattr(state, 'tasks', None)}")
-	#logger.info(f"INTERRUPTS = {getattr(state, 'interrupts', None)}")
-	#logger.info(f"VALUES KEYS = {list(state.values.keys())}")
+        #logger.info(f"NEXT = {state.next}")
+        #logger.info(f"TASKS = {getattr(state, 'tasks', None)}")
+        #logger.info(f"INTERRUPTS = {getattr(state, 'interrupts', None)}")
+        #logger.info(f"VALUES KEYS = {list(state.values.keys())}")
 
 
     except Exception as e:
@@ -172,10 +172,10 @@ def get_graph_status(thread_id: str, current_user=Depends(oauth2.admin_only)):
     config = {"configurable": {"thread_id": thread_id}}
     try:
         state = agent.get_state(config)
-	#logger.info(f"NEXT = {state.next}")
-	#logger.info(f"TASKS = {getattr(state, 'tasks', None)}")
-	#logger.info(f"INTERRUPTS = {getattr(state, 'interrupts', None)}")
-	#logger.info(f"VALUES KEYS = {list(state.values.keys())}")
+        #logger.info(f"NEXT = {state.next}")
+        #logger.info(f"TASKS = {getattr(state, 'tasks', None)}")
+        #logger.info(f"INTERRUPTS = {getattr(state, 'interrupts', None)}")
+        #logger.info(f"VALUES KEYS = {list(state.values.keys())}")
 
     except Exception as e:
         logger.error(f"Thread not found: {thread_id}", exc_info=True)

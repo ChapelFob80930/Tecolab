@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/course_agent/status/[thread_id],HTTPError('504 Server Error: Gateway Time-out for url: /course_agent/status/[thread_id]'),4,2026-07-24T08:29:16Z,2026-07-24T08:29:16Z
+GET,/course_agent/result/[course_id],HTTPError('504 Server Error: Gateway Time-out for url: /course_agent/result/[course_id]'),1,2026-07-24T08:29:16Z,2026-07-24T08:29:16Z

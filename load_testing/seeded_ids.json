@@ -1,0 +1,27 @@
+[
+  {
+    "thread_id": "thread_235633e6-8357-4e4f-a856-7227f744377a",
+    "course_id": "course_3e44b9ac-3a94-4625-ac53-dc9d4d677841",
+    "finished": true
+  },
+  {
+    "thread_id": "thread_85d765cb-a455-4feb-a15b-1406c507017b",
+    "course_id": "course_f16ce4b6-fe96-41d1-8af8-ce406f6f30ac",
+    "finished": true
+  },
+  {
+    "thread_id": "thread_88e857a6-b5ae-4a6a-ae73-125baddd16f1",
+    "course_id": "course_5ee67482-77bc-48c5-8eb1-7f75eed88b16",
+    "finished": false
+  },
+  {
+    "thread_id": "thread_d71252a3-b1f3-488d-90eb-acd29a59a53f",
+    "course_id": "course_6b70edf8-cdb5-48ce-ae99-78167a47ac53",
+    "finished": false
+  },
+  {
+    "thread_id": "thread_761cde50-0815-4616-8b59-308ac68efa55",
+    "course_id": "course_bcca97d0-4e7f-4007-84e5-4eda0225e379",
+    "finished": false
+  }
+]
