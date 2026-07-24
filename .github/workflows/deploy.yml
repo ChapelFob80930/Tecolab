@@ -24,7 +24,7 @@ jobs:
 
       - name: Verify container started
         run: |
-          sleep 5
-          docker logs tecolab-container --tail 50
+          sleep 10
+          docker logs tecolab-container
       
 
