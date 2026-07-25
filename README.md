@@ -2,7 +2,7 @@
 
 A LangGraph-based, human-in-the-loop agent that generates a full multi-module course from a single natural-language request. The agent produces a course outline, pauses for your approval or edits, then generates each module one at a time — pausing after every module so you can approve, request changes, or move on — and finally assembles and persists the completed course.
 
-**Live demo:** `http://65.1.86.70/` · **Swagger UI:** `http://65.1.86.70/docs` — see [Accessing the Live API](#accessing-the-live-api) for demo credentials.
+**Live demo:** `http://13.205.96.55/` · **Swagger UI:** `http://13.205.96.55/docs` — see [Accessing the Live API](#accessing-the-live-api) for demo credentials.
 
 ---
 
@@ -87,12 +87,12 @@ The Tecolab Course Generation Agent API is currently deployed and publicly acces
 
 Base URL:
 ```
-http://65.1.86.70/
+http://13.205.96.55/
 ```
 
 Swagger Documentation:
 ```
-http://65.1.86.70/docs
+http://13.205.96.55/docs
 ```
 
 > Note: The demo deployment currently runs over HTTP rather than HTTPS. Some browsers may display a security warning or mark the connection as "Not Secure" when accessing the API directly.
@@ -110,7 +110,7 @@ To explore and test the API directly from your browser, visit the documentation 
 
 For demo and testing purposes, you can authenticate directly through Swagger UI:
 
-1. Open `http://65.1.86.70/docs`
+1. Open `http://13.205.96.55/docs`
 2. Click the **Authorize** button in the top-right corner.
 3. Log in using:
    ```
@@ -353,7 +353,7 @@ Two Supabase-side tables are required beyond what your standard app migrations c
 If you simply want to test the API, the fastest option is to use the interactive Swagger documentation:
 
 ```
-http://65.1.86.70/docs
+http://13.205.96.55/docs
 ```
 
 Click **Authorize** and use:
